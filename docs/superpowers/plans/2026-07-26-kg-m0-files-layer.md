@@ -1,6 +1,12 @@
 # KG M0 — Files Layer Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> ✅ **COMPLETE — 2026-07-26.** All 12 tasks implemented, 41/41 tests passing,
+> real CLI verified end-to-end (init → raw add → dedupe → list → status → config).
+> Commits `ea4b5e3`…`aa8f792`. Three plan bugs caught and fixed inline via TDD:
+> tiktoken encoding `cl100k_base`, structural-vs-semantic edge sets, and
+> converter type-detection + title-from-H1. Next: M1 (graph + normalization gate).
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]` → `- [x]`) syntax for tracking.
 
 **Goal:** Build the local-first files layer of `kg` — `kg init`, `kg raw add`, `kg raw list`, `kg status`, `kg config get` — so a project gets a working, git-friendly LLM-wiki memory with immutable raw sources, a registry, and an index. No graph, no vectors, no embeddings yet (those are M1).
 
@@ -56,7 +62,7 @@
 **Interfaces:**
 - Produces: `kg.__version__: str`, `kg.cli.main.app: typer.Typer`, console script `kg` → `kg.cli.main:app`. `KgError(Exception)` base in `src/kg/__init__.py` for later modules to subclass.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/cli/test_main.py
@@ -82,12 +88,12 @@ def test_module_entrypoint_runs():
     assert "kg" in proc.stdout.lower()
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/cli/test_main.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'kg'`
 
-- [ ] **Step 3: Write `pyproject.toml`**
+- [x] **Step 3: Write `pyproject.toml`**
 
 ```toml
 [project]
@@ -123,7 +129,7 @@ addopts = "-q"
 dev = ["pytest>=8", "pytest-cov>=5"]
 ```
 
-- [ ] **Step 4: Write `.gitignore`**
+- [x] **Step 4: Write `.gitignore`**
 
 ```
 __pycache__/
@@ -138,7 +144,7 @@ htmlcov/
 .kg/kg.db-*
 ```
 
-- [ ] **Step 5: Write package modules**
+- [x] **Step 5: Write package modules**
 
 ```python
 # src/kg/__init__.py
@@ -209,7 +215,7 @@ def tmp_project(tmp_path, monkeypatch):
     return tmp_path
 ```
 
-- [ ] **Step 6: Write `Makefile`**
+- [x] **Step 6: Write `Makefile`**
 
 ```makefile
 PKG := kg
@@ -239,12 +245,12 @@ clean:
 	rm -rf dist build *.egg-info
 ```
 
-- [ ] **Step 7: Run test to verify it passes**
+- [x] **Step 7: Run test to verify it passes**
 
 Run: `uv sync && uv run pytest tests/cli/test_main.py -v`
 Expected: PASS (2 passed)
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add -A
@@ -261,7 +267,7 @@ git commit -m "feat(m0): package scaffold + kg --version CLI"
 **Interfaces:**
 - Produces: `KgPaths(root: Path)` with attributes `raw`, `raw_conversations`, `wiki`, `wiki_index`, `registry`, `ontology`, `config`, `snapshots`, `review`, `kg_db`. Classmethods `for_root(root) -> KgPaths`, `for_cwd() -> KgPaths` (finds `.kg` in cwd or raises `KgError`). Method `ensure() -> None` creates all dirs.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_paths.py
@@ -300,12 +306,12 @@ def test_for_cwd_raises_when_no_kg_dir(tmp_path, monkeypatch):
         KgPaths.for_cwd()
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_paths.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'kg.paths'`
 
-- [ ] **Step 3: Write implementation**
+- [x] **Step 3: Write implementation**
 
 ```python
 # src/kg/paths.py
@@ -360,12 +366,12 @@ class KgPaths:
             d.mkdir(parents=True, exist_ok=True)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/test_paths.py -v`
 Expected: PASS (3 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -382,9 +388,9 @@ git commit -m "feat(m0): KgPaths — single source of .kg/ layout"
 **Interfaces:**
 - Produces: `Config` (pydantic) with nested `ProjectConfig`, `BackendConfig`, `EmbeddingConfig`, `ThresholdsConfig`, `ChunkingConfig`, `QueryConfig`, `DreamConfig`. `Config.default(user_id: str, scope: str) -> Config`. `Config.from_path(path: Path) -> Config`. `Config.render_toml() -> str`.
 
-- [ ] **Step 4 consumes this:** `kg init` writes `render_toml()` to `.kg/config.toml`.
+- [x] **Step 4 consumes this:** `kg init` writes `render_toml()` to `.kg/config.toml`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_config.py
@@ -427,12 +433,12 @@ def test_from_path_missing_file_raises(tmp_path):
         Config.from_path(tmp_path / "nope.toml")
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_config.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'kg.config'`
 
-- [ ] **Step 3: Write implementation**
+- [x] **Step 3: Write implementation**
 
 ```python
 # src/kg/config.py
@@ -564,12 +570,12 @@ auto_hook = {str(self.dream.auto_hook).lower()}
 
 > Note: `dedup_weights` is serialized as a fixed block because the weights are part of the contract; thresholds carry it as a sub-table for M1 to read. The test asserts `thresholds.dedup_weights.embedding == 0.7`, so add `dedup_weights: DedupWeights = DedupWeights()` to `ThresholdsConfig` before running. (Apply that one-line addition in Step 3.)
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/test_config.py -v`
 Expected: PASS (3 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -586,7 +592,7 @@ git commit -m "feat(m0): Config pydantic model + TOML render/load"
 **Interfaces:**
 - Produces: `ALLOWED_NODE_TYPES: set[str]`, `ALLOWED_SEMANTIC_EDGE_TYPES: set[str]`, `STRUCTURAL_EDGE_TYPES: set[str]`, `Node` and `Edge` pydantic models, `build_ontology_schema() -> dict`, `write_ontology(path: Path, ontology_version: int = 1) -> None`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_ontology.py
@@ -624,12 +630,12 @@ def test_build_schema_includes_node_model():
     assert "Node" in schema["$defs"] or "properties" in schema
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_ontology.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'kg.ontology'`
 
-- [ ] **Step 3: Write implementation**
+- [x] **Step 3: Write implementation**
 
 ```python
 # src/kg/ontology.py
@@ -704,12 +710,12 @@ def write_ontology(path: Path, ontology_version: int = 1) -> None:
     path.write_text(json.dumps(schema, indent=2), encoding="utf-8")
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/test_ontology.py -v`
 Expected: PASS (4 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -727,7 +733,7 @@ git commit -m "feat(m0): ontology contract — node/edge models + JSON schema wr
 - Produces: `slugify(text: str, max_len: int = 80) -> str`, `Chunk(index, start_char, end_char, text, token_count)`, `chunk_markdown(text: str, tokens: int = 512, overlap: int = 64) -> list[Chunk]`.
 - `chunk_markdown` consumes: `tiktoken.get_encoding("cl100k")`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_chunking.py
@@ -769,12 +775,12 @@ def test_chunks_cover_full_text():
     assert all(c.end_char > c.start_char for c in chunks)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_chunking.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'kg.chunking'`
 
-- [ ] **Step 3: Write implementation**
+- [x] **Step 3: Write implementation**
 
 ```python
 # src/kg/chunking.py
@@ -861,12 +867,12 @@ def chunk_markdown(text: str, tokens: int = 512, overlap: int = 64) -> list[Chun
 
 > Replace the placeholder line in `_fill` (the `a = …` line is dead code) — keep only `start_char`/`end_char` lines. The test asserts coverage and heading-boundary behavior, not exact count.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/test_chunking.py -v`
 Expected: PASS (5 passed). If `test_chunks_cover_full_text` fails by a tail character, clamp the last chunk's `end_char` to `len(text)` in `chunk_markdown` before committing.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -883,7 +889,7 @@ git commit -m "feat(m0): slugify + heading-aware chunking (tiktoken cl100k)"
 **Interfaces:**
 - Produces: `RawFrontmatter` dataclass (`source: str`, `sha256: str`, `type: str`, `title: str`, `ingested_at: str`, `chunks: list[dict]` where each dict is `{index, start_char, end_char, token_count}`). Functions `render(fm: RawFrontmatter, body: str) -> str` and `parse(text: str) -> tuple[RawFrontmatter, str]`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_frontmatter.py
@@ -911,12 +917,12 @@ def test_parse_rejects_missing_frontmatter():
         parse("no frontmatter here")
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_frontmatter.py -v`
 Expected: FAIL — `ModuleNotFoundError`
 
-- [ ] **Step 3: Write implementation**
+- [x] **Step 3: Write implementation**
 
 ```python
 # src/kg/frontmatter.py
@@ -957,12 +963,12 @@ def parse(text: str) -> tuple[RawFrontmatter, str]:
     return fm, m.group(2)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/test_frontmatter.py -v`
 Expected: PASS (2 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -980,7 +986,7 @@ git commit -m "feat(m0): YAML frontmatter render/parse for raw files"
 - Produces: `ConvertedDoc(markdown: str, title: str | None)`, `convert_source(source: str, type: str | None, title: str | None) -> ConvertedDoc`. `source` is a filesystem path, a URL (http/https), or `"-"` for stdin. `type` is one of `pdf|docx|md|markdown|html|url|text` (auto-detected from `source` when `None`).
 - Consumes: markitdown (pdf/docx/html), trafilatura (url), stdin via `sys.stdin`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_convert.py
@@ -1019,12 +1025,12 @@ def test_missing_file_raises(tmp_path):
         convert_source(str(tmp_path / "nope.pdf"), type=None, title=None)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_convert.py -v`
 Expected: FAIL — `ModuleNotFoundError`
 
-- [ ] **Step 3: Write implementation**
+- [x] **Step 3: Write implementation**
 
 ```python
 # src/kg/convert.py
@@ -1082,12 +1088,12 @@ def convert_source(source: str, type: str | None, title: str | None) -> Converte
     return ConvertedDoc(markdown=md, title=title)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/test_convert.py -v`
 Expected: PASS (5 passed). (markitdown + trafilatura pulled in by `uv sync`.)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -1105,7 +1111,7 @@ git commit -m "feat(m0): source converters (text/md/html/pdf/docx/url)"
 - Produces: `RegistryEntry` dataclass (`sha256, path, source, type, title, ingested_at, extracted=False, chunks_done=[], chunks_failed={}`). `Registry(path: Path)` with `append(entry) -> bool` (False if sha256 already present), `has(sha256) -> bool`, `get(sha256) -> RegistryEntry | None`, `all() -> list[RegistryEntry]`, `unextracted() -> list[RegistryEntry]`, `mark_extracted(sha256, chunks_done, chunks_failed) -> None`.
 - Consumes: `RawFrontmatter` shape (not imported; registry is plain data).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_registry.py
@@ -1144,12 +1150,12 @@ def test_unextracted_and_mark(tmp_path):
     assert reg.get("a").chunks_done == [0, 1]
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_registry.py -v`
 Expected: FAIL — `ModuleNotFoundError`
 
-- [ ] **Step 3: Write implementation**
+- [x] **Step 3: Write implementation**
 
 ```python
 # src/kg/registry.py
@@ -1221,12 +1227,12 @@ class Registry:
         )
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/test_registry.py -v`
 Expected: PASS (3 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -1244,7 +1250,7 @@ git commit -m "feat(m0): registry.jsonl append/dedupe/checkpoint state"
 **Interfaces:**
 - Produces: `init_project(cwd: Path, user_id: str, scope: str) -> KgPaths` (core function, called by CLI and tests). Idempotent: re-running in an existing `.kg/` does not clobber config/ontology but ensures dirs + index exist.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/cli/test_init.py
@@ -1271,12 +1277,12 @@ def test_init_is_idempotent(tmp_path):
     assert cfg_before == cfg_after
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/cli/test_init.py -v`
 Expected: FAIL — `ModuleNotFoundError`
 
-- [ ] **Step 3: Write implementation**
+- [x] **Step 3: Write implementation**
 
 ```python
 # src/kg/cli/init.py
@@ -1332,12 +1338,12 @@ def init_cli(
     typer.echo(f"Initialized kg memory at {paths.root}")
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/cli/test_init.py -v`
 Expected: PASS (2 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -1356,7 +1362,7 @@ git commit -m "feat(m0): kg init — creates .kg/ layout, config, ontology, inde
 - Produces (core, in `raw_ops.py`): `add_source(paths: KgPaths, config: Config, source: str, type: str | None, title: str | None, conversation: bool = False) -> tuple[bool, str]` returning `(added, raw_relpath)` where `added=False` means deduped. `list_sources(paths: KgPaths, unextracted_only: bool) -> list[RegistryEntry]`.
 - Consumes: `KgPaths`, `Config`, `convert_source`, `chunk_markdown`, `RawFrontmatter`, `Registry`, `RegistryEntry`, `slugify`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_raw_ops.py
@@ -1407,12 +1413,12 @@ def _parse(text):
     return parse(text)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_raw_ops.py -v`
 Expected: FAIL — `ModuleNotFoundError`
 
-- [ ] **Step 3: Write implementation**
+- [x] **Step 3: Write implementation**
 
 ```python
 # src/kg/raw_ops.py
@@ -1533,12 +1539,12 @@ from kg.cli import raw as raw_cmd  # noqa: E402
 app.add_typer(raw_cmd.raw_app, name="raw")
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/test_raw_ops.py tests/cli/test_init.py -v`
 Expected: PASS
 
-- [ ] **Step 5: CLI smoke test**
+- [x] **Step 5: CLI smoke test**
 
 ```bash
 cd /tmp && rm -rf kg-smoke && mkdir kg-smoke && cd kg-smoke
@@ -1549,7 +1555,7 @@ uv run --project <repo> kg raw add - --type text --title "fact"  # re-add → du
 ```
 Expected: first add prints `added:`, list shows one source, second add prints `skipped (duplicate)`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A
@@ -1567,7 +1573,7 @@ git commit -m "feat(m0): kg raw add/list — convert→frontmatter→chunk→reg
 **Interfaces:**
 - Produces: `status_report(paths) -> dict` (core logic testable directly) returning `{sources, unextracted, extracted, last_ingested}`. `config_get(paths, key) -> str`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/cli/test_status.py
@@ -1607,12 +1613,12 @@ def test_config_get_missing_key(tmp_path):
         config_get(tmp_path / ".kg", "nope.nope")
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/cli/test_status.py tests/cli/test_config_cmd.py -v`
 Expected: FAIL — `ModuleNotFoundError`
 
-- [ ] **Step 3: Write implementation**
+- [x] **Step 3: Write implementation**
 
 ```python
 # src/kg/cli/status.py
@@ -1684,12 +1690,12 @@ app.add_typer(config_app, name="config")
 config_app.command(name="get")(config_cmd.config_cli)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/cli/test_status.py tests/cli/test_config_cmd.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -1705,7 +1711,7 @@ git commit -m "feat(m0): kg status + kg config get"
 
 **Interfaces:** none new — this task wires the spec §20 walkthrough's M0 portion into a single acceptance test and writes a minimal README.
 
-- [ ] **Step 1: Write the acceptance test**
+- [x] **Step 1: Write the acceptance test**
 
 ```python
 # tests/test_acceptance_m0.py
@@ -1755,12 +1761,12 @@ def test_m0_config_get_works(tmp_path, monkeypatch):
     assert "512" in out.stdout
 ```
 
-- [ ] **Step 2: Run the whole suite**
+- [x] **Step 2: Run the whole suite**
 
 Run: `uv run pytest -v`
 Expected: all tests PASS (core + cli + acceptance).
 
-- [ ] **Step 3: Write `README.md`**
+- [x] **Step 3: Write `README.md`**
 
 ```markdown
 # kg
@@ -1798,7 +1804,7 @@ See `docs/superpowers/specs/2026-07-26-kg-unified-memory-design.md` for the full
 design; `docs/superpowers/plans/` for milestone plans.
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add -A
