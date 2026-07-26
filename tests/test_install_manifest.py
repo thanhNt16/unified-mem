@@ -81,6 +81,16 @@ def test_corrupt_manifest_fails_closed_without_overwrite(tmp_path):
     assert path.read_bytes() == original
 
 
+def test_foreign_project_root_rejected_unchanged(tmp_path):
+    path = tmp_path / ".kg-install-manifest.json"
+    data = _manifest(tmp_path.parent / "victim").to_dict()
+    original = json.dumps(data).encode()
+    path.write_bytes(original)
+    with pytest.raises(ValueError, match="project_root"):
+        load_manifest(tmp_path)
+    assert path.read_bytes() == original
+
+
 def test_unknown_schema_version_rejected_unchanged(tmp_path):
     path = tmp_path / ".kg-install-manifest.json"
     data = _manifest(tmp_path).to_dict()
@@ -148,6 +158,21 @@ def test_path_traversal_rejected_for_artifact(tmp_path):
     )
     with pytest.raises(ValueError, match="escapes containment root"):
         check_drift(artifact, tmp_path)
+
+
+def test_manifest_path_runs_component_symlink_check(tmp_path, monkeypatch):
+    import kg.install.manifest as module
+
+    calls = []
+    real_check = module._check_no_symlink_escape
+
+    def recording_check(path, root):
+        calls.append((path, root))
+        return real_check(path, root)
+
+    monkeypatch.setattr(module, "_check_no_symlink_escape", recording_check)
+    module.manifest_path(tmp_path)
+    assert calls == [(tmp_path / ".kg-install-manifest.json", tmp_path.resolve())]
 
 
 def test_manifest_symlink_rejected(tmp_path):

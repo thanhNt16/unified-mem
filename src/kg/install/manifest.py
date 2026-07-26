@@ -193,13 +193,14 @@ def _check_no_symlink_escape(path: Path, root: Path) -> Path:
     root. This catches both intermediate symlinks and a symlinked final hop.
     """
     resolved_root = _resolve_root(root)
+    try:
+        parts = Path(path).resolve(strict=False).relative_to(resolved_root).parts
+    except (ValueError, OSError) as exc:
+        raise ValueError(
+            f"Path escapes containment root {resolved_root}: {path}"
+        ) from exc
     current = resolved_root
-    for part in Path(path).parts:
-        if part in ("", ".", "/"):
-            # Resolve to absolute root on a leading "/" or skip empty parts.
-            if part == "/":
-                current = Path("/").resolve(strict=False)
-            continue
+    for part in parts:
         current = current / part
         try:
             real = current.resolve(strict=False)
@@ -302,6 +303,7 @@ def manifest_path(project_root: Path) -> Path:
     """Compute manifest path with symlink containment check."""
     root = _resolve_root(project_root)
     target = Path(project_root) / MANIFEST_FILENAME
+    _check_no_symlink_escape(target, root)
     _assert_contained(target, root)
     return target
 
@@ -330,7 +332,15 @@ def load_manifest(project_root: Path) -> InstallManifest:
         raise ValueError(f"Corrupt manifest at {dest}: {exc}") from exc
     if not isinstance(data, dict):
         raise ValueError(f"Manifest at {dest} is not a JSON object")
-    return InstallManifest.from_dict(data)
+    manifest = InstallManifest.from_dict(data)
+    declared = Path(manifest.project_root).resolve(strict=False)
+    caller = _resolve_root(project_root)
+    if declared != caller:
+        raise ValueError(
+            f"Manifest project_root {declared} does not match caller's "
+            f"project_root {caller}; refusing to load foreign manifest at {dest}"
+        )
+    return manifest
 
 
 # ---------------------------------------------------------------------------
