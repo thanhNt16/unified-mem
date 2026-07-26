@@ -427,19 +427,106 @@ Each skill = `SKILL.md` (workflow + when-to-trigger, "pushy" description) + `ref
 
 ---
 
-## 15. Build Plan (milestones for the implementation plan)
+## 15. Distribution & One-Line Install
+
+The whole stack — build from source, install globally, and auto-configure one harness — is one command. This command is also the entry point every integration test calls.
+
+### 15.1 One-line bootstrap
+
+```
+curl -fsSL https://<raw>/kg/install.sh | bash -s -- [harness]
+```
+
+- No args, or `--harness claude` → **Claude Code** (default).
+- `--harness cursor` → Cursor. (Codex/OpenCode accepted but not first-class-tested in v1.)
+- Does, in order: clone/verify source → build wheel → `uv tool install kg` (puts `kg` on PATH globally, isolated env) → `kg install <harness>` (writes skills + MCP entry + instruction stanza + hooks into the target harness config) → `kg init` in cwd → prints a smoke result + the exact paths it wrote.
+
+### 15.2 Build from source (no curl)
+
+```
+git clone <kg> && cd kg && make install HARNESS=claude
+# = uv sync && uv build && uv tool install ./dist/kg-*.whl && kg install claude && kg init
+```
+
+`make` targets: `install` (full bootstrap), `build` (wheel only), `dev` (editable + run from checkout), `uninstall`, `test`, `bench`. Idempotent — re-running upgrades in place.
+
+### 15.3 `kg install` contract (what the one-liner delegates to)
+
+`kg install [harness] [--all]` writes, for the chosen harness: the 4 skills into its skills dir, an MCP stdio entry pointing at `kg mcp serve`, an instruction/`AGENTS.md` stanza, and the continual-learning hook (e.g. Claude Code `SessionEnd`). It must be **re-runnable and diff-friendly** — it merges into existing config rather than clobbering, and `kg install --uninstall` reverses exactly what it wrote. This is what makes the bootstrap testable and reversible.
+
+---
+
+## 16. Integration Tests
+
+End-to-end tests that exercise the *real distribution path* and a *real harness session*, not unit fakes. **Claude Code and Cursor are first-class in v1;** Codex/OpenCode/`AGENTS.md` covered by the bootstrap command but their live-session tests land later.
+
+### 16.1 Bootstrap test (all harnesses, v1)
+
+Calls the one-line command in a throwaway temp project, asserts `kg` is on PATH, `.kg/` is initialized, and `kg status` is green. This is the cheap gate that runs on every CI push and proves install works for every supported harness without spawning a session.
+
+### 16.2 Live-session E2E test (Claude Code + Cursor, v1)
+
+The serious test. For each of the two first-class harnesses:
+
+1. **Bootstrap fresh** via the one-line command in an isolated temp dir (captive git repo).
+2. **Seed** a small corpus (3 sources: one URL, one PDF, one pasted text) known to produce a measurable graph (N nodes, ≥1 cross-doc edge, ≥1 gray-zone pair).
+3. **Spawn a new harness session** against that dir, headless:
+   - Claude Code: `claude -p` (print/non-interactive) in a PTY, with the installed plugin + `kg` on PATH.
+   - Cursor: the agent CLI / MCP client in non-interactive mode.
+4. **Send a scripted message** that drives the full loop: ingest → extract → query → dream. e.g. *"ingest the 3 sources, extract them, then answer: who proposed RRF and what dedup threshold did we settle on?"*
+5. **Monitor** the session end-to-end: stream output, watch `wiki/log.md` and registry for the expected decision report, with a timeout + failure-pattern grep covering crashes, hangs, empty graphs, and wrong-merge signatures.
+6. **Assert** on the real artifacts, not the model's prose: node/edge counts in `kg.db` (within tolerance), the flagged pair reaches `same_as` pending, the answer cites lineage `sources`, `kg.db.zst` snapshot exists after dream.
+7. **Determinism guard:** the corpus + expected graph shape are pinned (golden artifact). Model output is judged structurally, never by exact string — flaky text is the enemy of E2E.
+
+A small harness library (`tests/e2e/`) wraps spawn/message/monitor so adding Codex/OpenCode later is one more driver, not a rewrite.
+
+### 16.3 Portability E2E (the headline success criterion)
+
+The test that proves criterion §1.1.1 (*harness swap works*): bootstrap with Claude Code, ingest+extract the corpus, snapshot; then bootstrap Cursor against the **same `.kg/`**, run the same query, assert the structural answer matches (same seed nodes, same lineage). Same memory, two harnesses, one truth.
+
+---
+
+## 17. Benchmarks (with vs without the stack)
+
+Measures the four success criteria on a fixed benchmark corpus (growing scale: 10 / 50 / 250 documents, mixed PDF+URL+text, including intentional near-duplicates and a cross-doc inference target).
+
+- **Answer quality vs baseline:** same questions asked (a) to a fresh harness with only the raw files on disk (the "grep" baseline) and (b) to a harness with `kg`. Scored on a rubric: cross-doc hits, multi-hop reach, lineage present. This is criterion §1.1.3 made measurable.
+- **Graph cleanliness:** after full ingest+dream, count duplicate entities, invented edge types, wrong merges against a hand-labeled golden set. Target: zero invented types, merge precision/recall above thresholds. Criterion §1.1.2.
+- **Cost + speed:** tokens consumed per extract, wall-clock for ingest+extract at each scale, p50/p95 query latency, `kg save` gate throughput. Criterion §1.1.4.
+- **Portability cost:** overhead of swapping harness (bootstrap + first-query warmup) vs same-harness.
+
+Results written to `bench/results/<date>/` as JSON + a markdown report; CI runs the small (10-doc) tier on every push, the large tier on release tags.
+
+---
+
+## 18. Documentation & Guidelines
+
+- **`README.md`** — what it is, the one-line install, a 60-second walkthrough (the §16 end-to-end), link to the spec.
+- **`docs/guides/`** — *Getting Started*, *Authoring Skills* (how to write a `/kg:*` skill against the CLI contract), *Per-Project Ontology Extension* (adding subtypes/semantic_types without breaking the gate), *Harness Setup* (one page per: Claude Code, Codex, OpenCode, Cursor, AGENTS.md).
+- **`docs/architecture/`** — the three-plane model, the resolution-vs-dedup rationale (why the gate is non-negotiable), the storage adapter interface, the build plan.
+- **`docs/ops/`** — *Recovery* (re-extract after a bad extraction / undo a merge via lineage), *Dream Tuning* (thresholds, when to escalate to human), *Team Bootstrap* (snapshot workflow, git policy).
+- **Per-skill `references/`** — the ontology contract, extraction few-shots, output schemas (these *are* docs the harness reads at runtime).
+- **`CHANGELOG.md`** + `ontology.json` versioning — every breaking ontology change is a version bump documented inline.
+
+Guidelines live next to the code they govern; the spec stays the single source of truth for *why*, the guides for *how*.
+
+---
+
+## 19. Build Plan (milestones for the implementation plan)
 
 1. **M0 — files only.** `kg init/raw add/status`, converters, registry, wiki index. A working LLM-wiki memory (no graph yet).
 2. **M1 — graph + gate.** SQLite adapter (nodes/edges/FTS5/sqlite-vec), `kg save` with the full normalization gate, `kg search/expand/pack`, `/kg:extract` + `/kg:query` skills.
 3. **M2 — dream + review.** `kg dream candidates`, merge/review commands, `/kg:dream` skill, snapshot.
 4. **M3 — serving breadth.** FastMCP wrapper, `kg install` for the four harnesses, conversation hooks.
 5. **M4 — polish.** `kg viz` (+Louvain), Cypher-subset reader, `--cascade` extraction, deep-search wiki caching policies.
+6. **M5 — distribution + E2E.** One-line bootstrap (`install.sh` + `make install`), `kg install --uninstall` reversibility, the bootstrap CI test for all harnesses, the live-session E2E harness (Claude Code + Cursor) and the portability E2E.
+7. **M6 — benchmarks + docs.** The with/without benchmark suite (small tier in CI, large on release), and the full documentation set (README, guides, architecture, ops).
 
 **Build-vs-buy checkpoint:** if M1's gate feels heavy, the escape hatch is to keep the skills + CLI contract but back `kg save`/`kg search` with Graphiti or neo4j-labs/agent-memory. The interface plane is designed so the knowledge plane's backend is swappable without touching a single skill.
 
 ---
 
-## 16. End-to-End Walkthrough
+## 20. End-to-End Walkthrough
 
 ```
 $ kg init && kg install claude-code
