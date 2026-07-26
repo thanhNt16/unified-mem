@@ -34,3 +34,14 @@ app.command(name="status")(status_cmd.status_cli)
 config_app = typer.Typer(help="Read kg config.")
 app.add_typer(config_app, name="config")
 config_app.command(name="get")(config_cmd.config_cli)
+
+from kg.cli import save as save_cmd        # noqa: E402
+from kg.cli import query as query_cmd      # noqa: E402
+from kg.cli import resolve_cli as rcli     # noqa: E402
+
+app.command(name="save")(save_cmd.save_cli)
+app.command(name="search")(query_cmd.search_cli)
+app.command(name="expand")(query_cmd.expand_cli)
+app.command(name="pack")(query_cmd.pack_cli)
+app.command(name="resolve")(rcli.resolve_cli)
+app.command(name="dedup-check")(rcli.dedup_check_cli)
