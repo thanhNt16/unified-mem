@@ -14,6 +14,7 @@ dependencies = [
     "sqlite-vec>=0.1.9",
     "numpy>=1.26",
     "rapidfuzz>=3",
+    "zstandard>=0.22",
     "fastembed>=0.3",
 ]
 

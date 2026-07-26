@@ -32,6 +32,12 @@ def init_project(cwd: Path, user_id: str, scope: str) -> KgPaths:
 def init_cli(
     user_id: str = typer.Option("user", "--user-id", help="Owner id embedded in node IDs."),
     scope: str = typer.Option("default", "--scope", help="Per-project scope label."),
+    from_snapshot: Path | None = typer.Option(None, "--from-snapshot", help="External snapshot artifact to restore."),
+    force: bool = typer.Option(False, "--force", help="Replace an existing kg.db when restoring."),
 ) -> None:
     paths = init_project(Path.cwd(), user_id=user_id, scope=scope)
+    if from_snapshot:
+        from kg.snapshot import restore_snapshot
+        restore_snapshot(from_snapshot, paths.kg_db, force=force)
+        typer.echo(f"Restored kg.db from {from_snapshot}")
     typer.echo(f"Initialized kg memory at {paths.root}")
