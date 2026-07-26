@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,8 +17,15 @@ _TYPE_BY_SUFFIX = {
     "pdf": "pdf", "docx": "docx",
 }
 
+_H1 = re.compile(r"^\s*#\s+(.+?)\s*$", re.MULTILINE)
 
-def _detect_type(source: str) -> str:
+
+def first_heading(markdown: str) -> str | None:
+    m = _H1.search(markdown)
+    return m.group(1).strip() if m else None
+
+
+def detect_type(source: str) -> str:
     if source == "-":
         return "text"
     parsed = urlparse(source)
@@ -25,6 +33,11 @@ def _detect_type(source: str) -> str:
         return "url"
     suffix = Path(source).suffix.lower().lstrip(".")
     return _TYPE_BY_SUFFIX.get(suffix, "text")
+
+
+def _detect_type(source: str) -> str:
+    # back-compat alias for any external caller / tests
+    return detect_type(source)
 
 
 def _convert_markitdown(path: str) -> str:
@@ -55,4 +68,5 @@ def convert_source(source: str, type: str | None, title: str | None) -> Converte
         md = _convert_markitdown(source)
     else:
         raise ValueError(f"Unsupported source type: {kind!r}")
-    return ConvertedDoc(markdown=md, title=title)
+    resolved_title = title if title is not None else first_heading(md)
+    return ConvertedDoc(markdown=md, title=resolved_title)
