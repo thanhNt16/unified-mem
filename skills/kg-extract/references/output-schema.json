@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "kg-extract output record",
+  "description": "One JSON object per chunk. Edge endpoints must name nodes in this record.",
+  "type": "object",
+  "required": ["nodes", "edges", "facts", "preferences"],
+  "properties": {
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "name", "summary", "aliases", "attributes"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "person", "organization", "location", "event", "object",
+              "preference", "fact", "document", "chunk", "conversation", "session"
+            ]
+          },
+          "subtype": {"type": ["string", "null"]},
+          "name": {"type": "string", "minLength": 1},
+          "summary": {"type": ["string", "null"]},
+          "aliases": {"type": "array", "items": {"type": "string"}},
+          "attributes": {"type": "object", "additionalProperties": true}
+        },
+        "additionalProperties": false
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source_name", "semantic_type", "target_name"],
+        "properties": {
+          "source_name": {"type": "string", "minLength": 1},
+          "semantic_type": {
+            "type": "string",
+            "enum": [
+              "employed_by", "member_of", "knows", "located_at", "resides_at",
+              "alias_of", "has_task", "uses", "owns", "related_to",
+              "part_of", "next", "mentions", "same_as", "superseded_by"
+            ]
+          },
+          "target_name": {"type": "string", "minLength": 1},
+          "summary": {"type": ["string", "null"]}
+        },
+        "additionalProperties": false
+      }
+    },
+    "facts": {"type": "array", "items": {"type": "object"}},
+    "preferences": {"type": "array", "items": {"type": "object"}}
+  },
+  "additionalProperties": false
+}
