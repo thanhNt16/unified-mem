@@ -54,8 +54,8 @@ class SQLiteAdapter(StorageAdapter):
             # Nested call — let the outermost own BEGIN/COMMIT/ROLLBACK.
             yield
             return
-        self._in_txn = True
         self.conn.execute("BEGIN IMMEDIATE")
+        self._in_txn = True
         try:
             yield
             self.conn.execute("COMMIT")

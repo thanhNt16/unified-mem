@@ -131,14 +131,7 @@ class Gate:
             base_id = node_id(self.user_id, type_, name)
 
             if dd.best_match_id and dd.score >= self.config.thresholds.dedup_merge:
-                if base_id == dd.best_match_id:
-                    self._merge_candidate(dd.best_match_id, candidate, res)
-                else:
-                    candidate.id = allocate_node_id(
-                        self.adapter, self.user_id, type_, name)
-                    self._enrich_from_resolution(candidate, res)
-                    self.adapter.upsert_nodes([candidate])
-                    self.merge(dd.best_match_id, candidate.id)
+                self._merge_candidate(dd.best_match_id, candidate, res)
                 settled_id = dd.best_match_id
                 report.decisions.append(Decision(
                     name, type_, "MERGED", settled_id, dd.score, "dedup"))

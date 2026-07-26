@@ -209,4 +209,3 @@ def test_transaction_rolls_back_multiple_upserts(tmp_path):
 
 
 # Note: existing-node re-embedding remains M1-simple; cache stored vectors when scale demands it.
-# Note: Resolver.user_id is retained for its public interface, unused by naming-only resolution.

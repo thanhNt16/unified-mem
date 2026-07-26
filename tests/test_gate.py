@@ -117,7 +117,7 @@ class _ForcedMergeDeduper:
         return DedupResult(self.winner_id, self.score)
 
 
-def test_auto_merge_persists_candidate_before_merge(tmp_path):
+def test_auto_merge_enriches_winner_without_persisting_candidate(tmp_path):
     a, g, cfg = _gate(tmp_path)
     a.upsert_nodes([Node(id="u:person:winner", type="person", name="Winner Name")])
     g.deduper = _ForcedMergeDeduper("u:person:winner", 0.99)
@@ -129,11 +129,11 @@ def test_auto_merge_persists_candidate_before_merge(tmp_path):
 
     assert rep.decisions[0].action == "MERGED"
     assert rep.decisions[0].target_id == "u:person:winner"
-    loser = a.get(node_id("u", "person", "Totally Different Name"))
-    assert loser is not None
-    assert loser.status == "tombstoned"
-    assert loser.merged_into == "u:person:winner"
-    assert a.get("u:person:winner").status == "active"
+    assert a.get(node_id("u", "person", "Totally Different Name")) is None
+    winner = a.get("u:person:winner")
+    assert winner.status == "active"
+    assert "Totally Different Name" in winner.aliases
+    assert winner.sources == [{"doc": "raw/x.md", "chunk": "0"}]
 
 
 class _ForcedFlagDeduper:
@@ -332,6 +332,39 @@ def test_same_name_same_context_merges(tmp_path):
 
     assert a.count()["nodes"] == 1
     assert rep.decisions[0].action in {"RESOLVED", "MERGED"}
+
+
+def test_suffixed_entity_re_save_is_idempotent(tmp_path):
+    a, g, cfg = _gate(tmp_path)
+    base = node_id("u", "person", "Paris")
+    g.normalize(
+        [{"type": "person", "name": "Paris", "summary": "capital of France"}],
+        [], "raw/fr.md#chunk-0",
+    )
+    g.deduper = _RecordingDeduper(base, 0.1)
+    g.normalize(
+        [{"type": "person", "name": "Paris", "summary": "city in Texas, USA"}],
+        [], "raw/tx.md#chunk-0",
+    )
+    suffixed = f"{base}-2"
+    before = a.count()
+    g.deduper = _RecordingDeduper(suffixed, 0.99)
+
+    rep = g.normalize(
+        [{"type": "person", "name": "Paris", "summary": "city in Texas, USA"}],
+        [], "raw/tx2.md#chunk-1",
+    )
+
+    assert rep.decisions[0].action == "MERGED"
+    assert a.count() == before
+    assert a.get(f"{base}-3") is None
+    assert a.conn.execute(
+        "SELECT COUNT(*) c FROM nodes WHERE status='tombstoned'"
+    ).fetchone()["c"] == 0
+    assert a.get(suffixed).sources == [
+        {"doc": "raw/tx.md", "chunk": "0"},
+        {"doc": "raw/tx2.md", "chunk": "1"},
+    ]
 
 
 def test_resolver_does_not_short_circuit_dedup(tmp_path):
