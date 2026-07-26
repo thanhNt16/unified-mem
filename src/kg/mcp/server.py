@@ -199,6 +199,7 @@ _HANDLERS = {
     "review_confirm": H.review_confirm,
     "review_reject": H.review_reject,
     "merge_nodes": H.merge_nodes,
+    "deep_search_memory": H.deep_search_memory,
 }
 
 
@@ -222,6 +223,7 @@ _EXPECTED_ARGS: dict[str, set[str]] = {
     "review_confirm": {"edge_id", "winner_id", "reason"},
     "review_reject": {"edge_id", "reason"},
     "merge_nodes": {"winner_id", "loser_id", "reason"},
+    "deep_search_memory": {"query", "hops"},
 }
 
 

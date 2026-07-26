@@ -15,6 +15,7 @@ from typing import Any, Literal
 
 from kg.config import Config
 from kg.dedup import Deduper
+from kg.deepsearch import build_deep_wiki
 from kg.dream import dream_candidates
 from kg.embed import Embedder, FakeEmbedder, make_embedder
 from kg.gate import Gate
@@ -53,6 +54,7 @@ _DREAM_KINDS = (
 )
 
 MAX_DEEP_HOPS = 5                   # preflight: hops>5 impossible
+MAX_DEEP_QUERY_CHARS = 1_000        # cap query length for deep_search_memory
 
 
 class HandlerError(Exception):
@@ -383,6 +385,33 @@ def dream_candidates_tool(
         for c in candidates
     ]
     return _truncate_payload({"candidates": items})
+
+
+def deep_search_memory(
+    project_dir: Path | str,
+    *,
+    query: str,
+    hops: int = 3,
+    authorized: bool = False,
+    embedder: Embedder | None = None,
+) -> dict:
+    """Materialize a bounded deep-search wiki. Requires write authorization."""
+    _authorize(authorized, "deep_search_memory")
+    paths = resolve_paths(project_dir)
+    cfg = Config.from_path(paths.config)
+    q = _bound_string(query, field="query", max_chars=MAX_DEEP_QUERY_CHARS)
+    h = _bound_int(hops, field="hops", lo=1, hi=MAX_DEEP_HOPS, default=3)
+    report = build_deep_wiki(
+        _adapter(paths), _embedder_for(cfg, embedder), q,
+        hops=h, wiki_dir=paths.wiki, config=cfg,
+    )
+    return _truncate_payload({
+        "slug": report.slug,
+        "pages": report.pages,
+        "cached": report.cached,
+        "node_count": report.node_count,
+        "max_updated_at": report.max_updated_at,
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -1002,6 +1031,22 @@ WRITE_TOOLS: dict[str, dict] = {
             },
         },
     },
+    "deep_search_memory": {
+        "description": (
+            "Build a scoped deep-search wiki: hybrid_search -> expand -> "
+            "materialize pages under wiki/deep/<slug>/. REQUIRES write "
+            "authorization (materializes files)."
+        ),
+        "inputSchema": {
+            "type": _OBJ,
+            "additionalProperties": False,
+            "required": ["query"],
+            "properties": {
+                "query": {"type": _STR, "minLength": 1, "maxLength": MAX_DEEP_QUERY_CHARS},
+                "hops": _t_int(1, MAX_DEEP_HOPS),
+            },
+        },
+    },
 }
 
 ALL_TOOLS: dict[str, dict] = {**READ_TOOLS, **WRITE_TOOLS}
@@ -1034,7 +1079,7 @@ __all__ = [
     # Resources
     "read_wiki_index", "read_ontology",
     # Write tools
-    "save_pole", "review_confirm", "review_reject", "merge_nodes",
+    "save_pole", "review_confirm", "review_reject", "merge_nodes", "deep_search_memory",
     # Test affordance
     "FakeEmbedder",
 ]

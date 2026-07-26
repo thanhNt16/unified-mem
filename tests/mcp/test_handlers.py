@@ -55,6 +55,7 @@ def test_tool_schemas_closed_and_bounded():
     assert set(ALL_TOOLS) == {
         "search_memory", "expand_memory", "pack_context", "dream_candidates",
         "save_pole", "review_confirm", "review_reject", "merge_nodes",
+        "deep_search_memory",
     }
     for spec in ALL_TOOLS.values():
         schema = spec["inputSchema"]
@@ -66,6 +67,9 @@ def test_tool_schemas_closed_and_bounded():
     expand = ALL_TOOLS["expand_memory"]["inputSchema"]["properties"]
     assert expand["hops"]["maximum"] == 5
     assert expand["seed_ids"]["maxItems"] == 100
+    deep = ALL_TOOLS["deep_search_memory"]["inputSchema"]["properties"]
+    assert deep["hops"]["maximum"] == 5
+    assert deep["query"]["maxLength"] > 0
 
 
 def test_write_denied_by_default(project: Path, emb: FakeEmbedder):
