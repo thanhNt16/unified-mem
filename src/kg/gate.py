@@ -175,10 +175,11 @@ class Gate:
             self.adapter.upsert_edges(new_edges)
         self.adapter.conn.commit()
 
-        # tombstone loser (never hard-delete)
+        # tombstone loser (never hard-delete). Embedding is preserved in the
+        # serialized node for audit/recovery; adapter's status-gated vec
+        # upsert + delete-then-insert keeps it out of the ANN index.
         l.status = "tombstoned"
         l.merged_into = winner_id
-        l.embedding = None  # keep out of vec index
         self.adapter.upsert_nodes([l])
 
     def _add_source(self, sources, source):

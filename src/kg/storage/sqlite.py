@@ -61,9 +61,10 @@ class SQLiteAdapter(StorageAdapter):
                 "INSERT INTO nodes_fts(node_id, name, summary, type) VALUES(?,?,?,?)",
                 (n.id, n.name, n.summary or "", n.type),
             )
-            if n.embedding is not None:
+            self.conn.execute("DELETE FROM nodes_vec WHERE node_id=?", (n.id,))
+            if n.embedding is not None and n.status == "active":
                 self.conn.execute(
-                    "INSERT OR REPLACE INTO nodes_vec(node_id, embedding) VALUES (?, ?)",
+                    "INSERT INTO nodes_vec(node_id, embedding) VALUES (?, ?)",
                     (n.id, sqlite_vec.serialize_float32(n.embedding)),
                 )
         self.conn.commit()

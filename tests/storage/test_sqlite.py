@@ -134,5 +134,33 @@ def test_vec_search_type_filter_overfetches_wrong_type_hits(tmp_path):
     assert hits == [("u:person:match", hits[0][1])]
 
 
+def test_vec_upsert_reembed_updates_vector(tmp_path):
+    """Upserting same active node with different embedding updates the vec row."""
+    a = _adapter(tmp_path)
+    v1 = [1.0] * 384
+    v2 = [0.0] * 383 + [1.0]
+    a.upsert_nodes([
+        Node(id="u:person:x", type="person", name="X", embedding=v1),
+        Node(id="u:person:y", type="person", name="Y", embedding=v1),
+    ])
+    a.upsert_nodes([Node(id="u:person:x", type="person", name="X", embedding=v2)])
+    vec_count = a.conn.execute("SELECT COUNT(*) FROM nodes_vec WHERE node_id=?", ("u:person:x",)).fetchone()[0]
+    assert vec_count == 1
+    assert a.vec_search(v1, k=1, type_filter="person")[0][0] == "u:person:y"
+    assert a.vec_search(v2, k=1, type_filter="person")[0][0] == "u:person:x"
+
+
+def test_tombstone_removes_vec_row(tmp_path):
+    """Tombstoning a formerly embedded node removes its vec row; vec_search excludes it."""
+    a = _adapter(tmp_path)
+    v = [1.0] + [0.0] * 383
+    a.upsert_nodes([Node(id="u:person:x", type="person", name="X", embedding=v)])
+    a.delete("u:person:x")  # tombstones
+    vec_count = a.conn.execute("SELECT COUNT(*) FROM nodes_vec WHERE node_id=?", ("u:person:x",)).fetchone()[0]
+    assert vec_count == 0
+    hits = a.vec_search(v, k=5, type_filter="person")
+    assert not any(h[0] == "u:person:x" for h in hits)
+
+
 # Note: existing-node re-embedding remains M1-simple; cache stored vectors when scale demands it.
 # Note: Resolver.user_id is retained for its public interface, unused by naming-only resolution.
