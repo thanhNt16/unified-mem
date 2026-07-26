@@ -42,8 +42,20 @@ args = ["mcp", "serve", "--project-root", {project}]
 """
 
 
+def _toml_basic_string(value: str) -> str:
+    """Render ``value`` as a TOML basic string.
+
+    Uses ``json.dumps(..., ensure_ascii=False)`` so non-BMP characters (emoji,
+    CJK, etc.) survive as native UTF-8 rather than ``\\uD83C\\uDF1F`` surrogate
+    pairs — which TOML's basic-string grammar rejects. ``json`` and TOML basic
+    strings share the same escape set for ``"`` and ``\\``, so the JSON output
+    is a valid TOML basic string literal.
+    """
+    return json.dumps(str(value), ensure_ascii=False)
+
+
 def _render_config(project: Path) -> str:
-    return CODEX_CONFIG_TEMPLATE.format(project=json.dumps(str(project)))
+    return CODEX_CONFIG_TEMPLATE.format(project=_toml_basic_string(project))
 
 
 def _codex_config_bytes(project: Path) -> bytes:

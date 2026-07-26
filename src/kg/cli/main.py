@@ -89,12 +89,20 @@ def _hook_session_end(
     project_root: Path = typer.Option(
         ..., "--project-root", help="Project root containing .kg/."
     ),
+    session_root: Path | None = typer.Option(
+        None, "--session-root",
+        help="Trusted directory under --project-root that contains transcript files "
+             "referenced by payload.transcript_path. Must be contained inside project root.",
+    ),
 ) -> None:
     """Claude SessionEnd conversation-ingest hook. stdout is always empty."""
     import sys as _sys
 
     from kg.hooks.session_end import run as _run
 
-    code = _run(project_root, stdin=_sys.stdin.buffer, stderr=_sys.stderr)
+    code = _run(
+        project_root, stdin=_sys.stdin.buffer, stderr=_sys.stderr,
+        session_root=session_root,
+    )
     if code:
         raise typer.Exit(code)

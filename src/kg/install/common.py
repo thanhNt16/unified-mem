@@ -295,12 +295,12 @@ def uninstall(manifest: InstallManifest, harness: Harness, project_root: Path) -
         raise InstallConflict(
             f"Manifest project_root {declared} does not match caller's project_root {project}"
         )
-    changes: list[tuple[Path, bytes | None]] = []; skills: list[Path] = []
+    changes: list[tuple[Path, bytes | None]] = []; skills: list[tuple[Path, bytes]] = []
     for artifact in manifest.artifacts:
         path = Path(artifact.path); validate_target(path, project)
         if artifact.kind is ArtifactKind.COPIED_SKILL:
             if not path.is_dir() or tree_hash(path) != artifact.content_sha256: raise InstallConflict(f"Skill drift; refusing uninstall: {path}")
-            skills.append(path); continue
+            skills.append((path, _tar(path))); continue
         if not path.is_file() or path.is_symlink(): raise InstallConflict(f"Owned file missing or unsafe: {path}")
         raw = path.read_bytes()
         if artifact.kind is ArtifactKind.JSON_OBJECT:
@@ -322,16 +322,60 @@ def uninstall(manifest: InstallManifest, harness: Harness, project_root: Path) -
             if content_hash(raw) != artifact.content_sha256: raise InstallConflict(f"Owned file drift; refusing uninstall: {path}")
             changes.append((path, None))
     originals: list[tuple[Path, bytes]] = []
+    removed_skills: list[tuple[Path, bytes]] = []
     try:
         for path, data in changes:
             originals.append((path, path.read_bytes()))
             if data is None: path.unlink()
             else: atomic_write(path, data)
-        for path in skills: shutil.rmtree(path)
+        for path, snapshot in skills:
+            shutil.rmtree(path)
+            removed_skills.append((path, snapshot))
         mpath = manifest_path(project)
         if mpath.exists(): mpath.unlink()
         backups = project / ".kg-install-backups" / manifest.transaction_id
         if backups.exists(): shutil.rmtree(backups)
     except Exception:
+        for path, snapshot in reversed(removed_skills):
+            try: shutil.rmtree(path, ignore_errors=True)
+            except OSError: pass
+            _untar(path, snapshot)
         for path, data in reversed(originals): atomic_write(path, data)
         raise
+
+
+def _tar(root: Path) -> bytes:
+    """Snapshot an owned skill tree to bytes for restore-on-failure."""
+    buf = bytearray()
+    for item in sorted(root.rglob("*"), key=lambda p: p.relative_to(root).as_posix()):
+        rel = item.relative_to(root).as_posix().encode() + b"\0"
+        if item.is_dir():
+            buf += b"D\0" + rel
+        elif item.is_file():
+            buf += b"F\0" + rel + item.read_bytes() + b"\0"
+    return bytes(buf)
+
+
+def _untar(root: Path, snapshot: bytes) -> None:
+    root.parent.mkdir(parents=True, exist_ok=True)
+    if root.exists():
+        return
+    root.mkdir(parents=True, exist_ok=True)
+    cursor = 0
+    n = len(snapshot)
+    while cursor < n:
+        kind = snapshot[cursor:cursor + 2]
+        cursor += 2
+        end = snapshot.index(b"\0", cursor)
+        rel = snapshot[cursor:end].decode()
+        cursor = end + 1
+        target = root / rel
+        if kind == b"D\0":
+            target.mkdir(parents=True, exist_ok=True)
+        elif kind == b"F\0":
+            fend = snapshot.index(b"\0", cursor)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(snapshot[cursor:fend])
+            cursor = fend + 1
+        else:
+            raise InstallConflict(f"corrupt skill snapshot byte kind: {kind!r}")

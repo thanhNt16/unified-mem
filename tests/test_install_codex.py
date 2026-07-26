@@ -202,6 +202,35 @@ def test_common_copy_tree_replace_failure_restores_destination(tmp_path, monkeyp
     assert (destination / "SKILL.md").read_text() == "user"
 
 
+def test_project_path_with_non_bmp_unicode_generates_parseable_toml(tmp_path):
+    """H4: non-BMP unicode (e.g. emoji) in project path must produce TOML that
+    parses via tomllib. ``json.dumps`` default emits surrogate pairs that break
+    TOML string parsing; the fix uses ``ensure_ascii=False`` plus minimal TOML
+    string escaping for ``"`` and ``\\`` only.
+    """
+    home = tmp_path / "home"
+    project = tmp_path / "project-🌟-日"
+    skills = tmp_path / "skills"
+    home.mkdir()
+    project.mkdir()
+    skills.mkdir()
+    for name in common.SKILLS:
+        directory = skills / name
+        directory.mkdir()
+        (directory / "SKILL.md").write_text(name)
+
+    planned = plan_codex_install(project, home, skills_src=skills)
+    config_write = next(
+        write for write in planned.writes if write.path == project / CODEX_CONFIG_REL
+    )
+    # Must round-trip via tomllib without raising.
+    parsed = tomllib.loads(config_write.data.decode("utf-8"))
+    assert parsed["mcp_servers"]["kg"] == {
+        "command": "kg",
+        "args": ["mcp", "serve", "--project-root", str(project.resolve())],
+    }
+
+
 def test_symlink_config_refused(tmp_path):
     home, project, skills = roots(tmp_path)
     outside = tmp_path / "outside.toml"; outside.write_text("ok")

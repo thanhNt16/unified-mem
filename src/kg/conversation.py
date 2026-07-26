@@ -20,12 +20,18 @@ DEFAULT_SECRET_PATTERNS: tuple[Pattern[str], ...] = (
     re.compile(r"(?i)\bbearer\s+[a-z0-9._~+/-]{8,}"),
     # Authorization: Basic <credentials>
     re.compile(r"(?i)\b(?:authorization|proxy-authorization)\s*:\s*basic\s+[^\s,;]+"),
-    # header/shell-style key=value assignments
-    re.compile(r"(?i)\b(?:api[_ -]?key|token|secret|password|cookie|set-cookie)\s*[:=]\s*[^\s,;]+"),
-    # JSON-quoted secret values: "auth_token":"sk-..." (value side only)
+    # header/shell-style key=value assignments — quote-aware: when value starts
+    # with a quote char (", ') consume through the matching close; otherwise stop
+    # at the first whitespace/comma/semicolon (preserving prior behavior).
+    re.compile(
+        r"(?i)\b(?:api[_ -]?key|token|secret|password|cookie|set-cookie)\s*[:=]\s*"
+        r"(?:\"[^\"]{4,}\"|'[^']{4,}'|[^\s,;]{4,})"
+    ),
+    # JSON-quoted secret values: "auth_token":"sk-..." (value side only) — quote-aware
+    # so a value containing escaped quotes / interior characters is fully consumed.
     re.compile(
         r"(?i)(\"(?:api[_ -]?key|auth[_ -]?token|token|secret|password|cookie)\"\s*:\s*\")"
-        r"[^\"]{4,}(\")"
+        r"(?:\\.|[^\"\\]){4,}(\")"
     ),
     # Standalone Anthropic / GitHub / Slack / AWS tokens without prefix
     re.compile(r"sk-ant-[a-z0-9._-]{8,}"),
@@ -119,7 +125,8 @@ def canonical_body(messages: Iterable[ConversationMessage | Mapping[str, Any]]) 
 def format_conversation(messages: list[dict[str, Any]] | Conversation, session_id: str, harness: str, *, title: str = "") -> str:
     conversation = messages if isinstance(messages, Conversation) else parse_conversation(messages)
     identity = identity_hash(harness, session_id, conversation.content_hash)
-    header = " | ".join(part for part in (f"session: {_safe(session_id)}", f"harness: {_safe(harness)}", f"title: {_safe(title)}" if title else "", f"hash: {conversation.content_hash}", f"identity: {identity}", f"metadata: {json.dumps(asdict(conversation.metadata), sort_keys=True, separators=(',', ':'))}") if part)
+    safe_title = redact_secrets(title, DEFAULT_SECRET_PATTERNS)[0] if title else ""
+    header = " | ".join(part for part in (f"session: {_safe(session_id)}", f"harness: {_safe(harness)}", f"title: {_safe(safe_title)}" if safe_title else "", f"hash: {conversation.content_hash}", f"identity: {identity}", f"metadata: {json.dumps(asdict(conversation.metadata), sort_keys=True, separators=(',', ':'))}") if part)
     lines = [f"<!-- {header} -->", ""]
     for message in conversation.messages:
         lines.extend((f"### **{message.role}**", "", *[f"    {line}" for line in message.content.splitlines()], ""))

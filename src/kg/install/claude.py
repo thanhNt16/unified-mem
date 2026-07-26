@@ -252,7 +252,12 @@ def plan_claude_install(
     session_end = hooks.get("SessionEnd", [])
     if not isinstance(session_end, list):
         raise InstallConflict(f"hooks.SessionEnd must be a list: {settings_path}")
-    argv = ["kg", "hook", "session-end", "--project-root", str(project)]
+    session_dir = project / ".kg" / "sessions"
+    argv = [
+        "kg", "hook", "session-end",
+        "--project-root", str(project),
+        "--session-root", str(session_dir),
+    ]
     command = shlex.join(argv)
     wanted_hook = {
         "matcher": "*",
@@ -367,6 +372,10 @@ def apply_plan(plan: InstallPlan) -> InstallManifest:
     manifest = InstallManifest(project_root=str(plan.project_root), harness=Harness.CLAUDE)
     backup_root = plan.project_root / ".kg-install-backups" / manifest.transaction_id
     _check_no_symlink_escape(backup_root, plan.project_root)
+    # Ensure trusted transcript dir exists (referenced by --session-root in hook argv).
+    session_dir = plan.project_root / ".kg" / "sessions"
+    _check_no_symlink_escape(session_dir, plan.project_root)
+    session_dir.mkdir(parents=True, exist_ok=True)
     originals: list[tuple[Path, bytes | None, int | None, bool]] = []
     directory_backups: dict[Path, Path] = {}
     artifacts: list[InstalledArtifact] = []

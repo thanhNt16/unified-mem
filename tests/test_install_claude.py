@@ -56,8 +56,11 @@ def test_apply_exact_expected_and_manifest_ownership(tmp_path):
     assert hook["hooks"][0]["type"] == "command"
     assert hook["hooks"][0]["command"] == (
         f"kg hook session-end --project-root {project.resolve()}"
+        f" --session-root {project.resolve() / '.kg' / 'sessions'}"
     )
     assert "sh -c" not in hook["hooks"][0]["command"]
+    # Trusted session-root dir is created at apply time
+    assert (project / ".kg" / "sessions").is_dir()
     assert STANZA == (project / "CLAUDE.md").read_bytes()
     for name in ("kg-extract", "kg-query", "kg-dream"):
         assert (home / ".claude/skills/kg" / name / "SKILL.md").read_text() == name
