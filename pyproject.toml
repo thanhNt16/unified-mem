@@ -16,6 +16,7 @@ dependencies = [
     "rapidfuzz>=3",
     "zstandard>=0.22",
     "fastembed>=0.3",
+    "mcp==1.26.0",
 ]
 
 [project.scripts]
