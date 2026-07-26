@@ -1,6 +1,8 @@
+import os
 import sqlite3
 
 import pytest
+import kg.snapshot as snapshot_module
 from typer.testing import CliRunner
 
 from kg.cli.init import init_project
@@ -102,3 +104,103 @@ def test_init_from_external_snapshot(tmp_path, monkeypatch):
     restored = SQLiteAdapter(target / ".kg" / "kg.db")
     assert restored.get(node.id) is not None
     restored.conn.close()
+
+
+def test_create_snapshot_rejects_source_identity(tmp_path):
+    source = tmp_path / "src.db"
+    conn = sqlite3.connect(source)
+    conn.execute("CREATE TABLE t(v)")
+    conn.execute("INSERT INTO t VALUES ('original')")
+    conn.commit()
+    source_bytes = source.read_bytes()
+
+    for out_path in (source, tmp_path / "." / "src.db", tmp_path / "src.db-wal"):
+        with pytest.raises(ValueError):
+            create_snapshot(source, out_path)
+    link = tmp_path / "link.db"
+    os.symlink(source.resolve(), link)
+    with pytest.raises(ValueError):
+        create_snapshot(source, link)
+
+    assert source.read_bytes() == source_bytes
+    assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+    assert conn.execute("SELECT v FROM t").fetchone()[0] == "original"
+    conn.close()
+
+
+def _wal_destination(tmp_path):
+    destination = tmp_path / "dst.db"
+    conn = sqlite3.connect(destination)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("CREATE TABLE t(v)")
+    conn.execute("INSERT INTO t VALUES ('wal-only')")
+    conn.commit()
+    wal, shm = tmp_path / "dst.db-wal", tmp_path / "dst.db-shm"
+    assert wal.exists() and shm.exists()
+    return destination, conn, wal, shm
+
+
+def _snapshot_artifact(tmp_path):
+    source = tmp_path / "src.db"
+    sqlite3.connect(source).execute("CREATE TABLE t(v)").connection.close()
+    return create_snapshot(source, tmp_path / "snap.zst")
+
+
+def test_restore_restores_db_and_sidecars_on_replace_failure(tmp_path, monkeypatch):
+    artifact = _snapshot_artifact(tmp_path)
+    destination, conn, wal, shm = _wal_destination(tmp_path)
+    original = {path: path.read_bytes() for path in (destination, wal, shm)}
+    real_replace = snapshot_module.os.replace
+
+    def fail_install(src, dst):
+        if dst == destination and src.name.endswith(".db.tmp"):
+            raise OSError("simulated install failure")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(snapshot_module.os, "replace", fail_install)
+    with pytest.raises(OSError, match="simulated install failure"):
+        restore_snapshot(artifact, destination, force=True)
+
+    assert {path: path.read_bytes() for path in (destination, wal, shm)} == original
+    assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+    assert conn.execute("SELECT v FROM t").fetchone()[0] == "wal-only"
+    conn.close()
+
+
+def test_restore_rolls_back_db_and_sidecars_on_initial_fsync_failure(tmp_path, monkeypatch):
+    artifact = _snapshot_artifact(tmp_path)
+    destination, conn, wal, shm = _wal_destination(tmp_path)
+    original = {path: path.read_bytes() for path in (destination, wal, shm)}
+    real_fsync = snapshot_module._fsync_directory
+    calls = 0
+
+    def fail_initial_fsync(path):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("simulated initial fsync failure")
+        real_fsync(path)
+
+    monkeypatch.setattr(snapshot_module, "_fsync_directory", fail_initial_fsync)
+    with pytest.raises(OSError, match="simulated initial fsync failure"):
+        restore_snapshot(artifact, destination, force=True)
+
+    assert {path: path.read_bytes() for path in (destination, wal, shm)} == original
+    assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+    assert conn.execute("SELECT v FROM t").fetchone()[0] == "wal-only"
+    conn.close()
+
+
+def test_restore_success_removes_quarantines_and_stale_sidecars(tmp_path):
+    artifact = _snapshot_artifact(tmp_path)
+    destination, conn, wal, shm = _wal_destination(tmp_path)
+    conn.close()
+
+    restore_snapshot(artifact, destination, force=True)
+
+    assert not wal.exists() and not shm.exists()
+    assert not list(tmp_path.glob("*.quarantine"))
+    conn = sqlite3.connect(destination)
+    assert conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchone()[0] == "t"
+    assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+    conn.close()

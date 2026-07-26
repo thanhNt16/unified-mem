@@ -33,11 +33,22 @@ def _integrity_check(path: Path) -> None:
         conn.close()
 
 
+def _resolve_strict_false(path: Path) -> Path:
+    """Resolve aliases without requiring the final path to exist."""
+    return path.resolve(strict=False)
+
+
 def create_snapshot(db_path: Path, out_path: Path) -> Path:
     """Create a compressed, WAL-consistent SQLite backup atomically."""
     db_path, out_path = Path(db_path), Path(out_path)
     if not db_path.is_file():
         raise FileNotFoundError(db_path)
+    resolved_db = _resolve_strict_false(db_path)
+    source_paths = (resolved_db, Path(f"{resolved_db}-wal"), Path(f"{resolved_db}-shm"))
+    if _resolve_strict_false(out_path) in source_paths:
+        raise ValueError(
+            f"Snapshot output {out_path} must not overwrite source database or sidecars"
+        )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     backup_fd, backup_name = tempfile.mkstemp(dir=out_path.parent, suffix=".db.tmp")
     artifact_fd, artifact_name = tempfile.mkstemp(dir=out_path.parent, suffix=".zst.tmp")
@@ -98,12 +109,41 @@ def restore_snapshot(
             destination.flush()
             os.fsync(destination.fileno())
         _integrity_check(temp_path)
-        # Delete stale WAL sidecars only after the replacement has validated.
-        for sidecar in (Path(f"{db_path}-wal"), Path(f"{db_path}-shm")):
-            sidecar.unlink(missing_ok=True)
-        os.replace(temp_path, db_path)
-        _fsync_directory(db_path.parent)
-        return db_path
+        quarantined: list[tuple[Path, Path]] = []
+
+        def quarantine(path: Path) -> None:
+            fd, name = tempfile.mkstemp(
+                dir=db_path.parent,
+                prefix=f".{path.name}.",
+                suffix=".quarantine",
+            )
+            os.close(fd)
+            quarantine_path = Path(name)
+            quarantine_path.unlink()
+            os.replace(path, quarantine_path)
+            quarantined.append((path, quarantine_path))
+
+        installed = False
+        try:
+            for path in (db_path, Path(f"{db_path}-wal"), Path(f"{db_path}-shm")):
+                if path.exists():
+                    quarantine(path)
+            os.replace(temp_path, db_path)
+            installed = True
+            _fsync_directory(db_path.parent)
+        except Exception:
+            if installed:
+                db_path.unlink(missing_ok=True)
+            for path, quarantine_path in reversed(quarantined):
+                if quarantine_path.exists():
+                    os.replace(quarantine_path, path)
+            _fsync_directory(db_path.parent)
+            raise
+        else:
+            for _, quarantine_path in quarantined:
+                quarantine_path.unlink(missing_ok=True)
+            _fsync_directory(db_path.parent)
+            return db_path
     finally:
         temp_path.unlink(missing_ok=True)
 
