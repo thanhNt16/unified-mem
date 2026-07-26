@@ -21,3 +21,8 @@ def _root(
     if ctx.invoked_subcommand is None:
         typer.echo(ctx.get_help())
         raise typer.Exit()
+
+
+from kg.cli import init as init_cmd  # noqa: E402
+
+app.command(name="init")(init_cmd.init_cli)
