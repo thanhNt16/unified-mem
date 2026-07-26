@@ -23,6 +23,9 @@ def translate(ast: AST, adapter: Any) -> list[dict[str, Any]]:
     """
     if ast.match is None or ast.return_ is None:
         raise CypherError("MATCH and RETURN are required")
+    if ast.with_clauses:
+        # Parsed but not lowered: silently dropping WITH would return wrong rows.
+        raise CypherError("WITH is not supported by the read-only translator")
     if len(ast.match.patterns) != 1:
         raise CypherError("multiple MATCH patterns are not supported")
     pattern = ast.match.patterns[0]

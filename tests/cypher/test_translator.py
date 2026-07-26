@@ -98,6 +98,13 @@ def test_rejects_match_without_where(tmp_path):
         translate(ast, a)
 
 
+def test_rejects_with_clause_at_translate(tmp_path):
+    a = _adapter(tmp_path)
+    ast = parse('MATCH (n:person) WHERE n.name CONTAINS "x" WITH n RETURN n')
+    with pytest.raises(CypherError, match="WITH"):
+        translate(ast, a)
+
+
 def test_return_row_structure(tmp_path):
     a = _adapter(tmp_path)
     rows = translate(parse('MATCH (n:person) WHERE n.name CONTAINS "Demis" RETURN n'), a)
