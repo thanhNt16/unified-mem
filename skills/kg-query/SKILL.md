@@ -19,7 +19,7 @@ See `references/query-modes.md` for full details. Short form:
 | Mode | When | Commands used |
 |---|---|---|
 | **hybrid** (default) | Most questions. Short, factual, lookup-style. | `kg search` then `kg expand` then `kg pack` |
-| **NL-Cypher** | Structural queries: "all orgs founded before 2020", "path from X to Y". | `kg search --mode cypher <generated-Cypher>` |
+| **NL-Cypher** | Structural queries: "all orgs founded before 2020", "path from X to Y". | `kg cypher <generated-Cypher>` |
 | **deep-search** | Exploratory / broad / 50+ potential hits. | `kg wiki build --from-query --hops 3` then read wiki pages |
 
 Default to hybrid. Switch to NL-Cypher only when the question is explicitly structural (path, aggregation, pattern). Switch to deep-search when hybrid returns >50 hits or the user says "everything about", "comprehensive review", "all context on".
@@ -48,8 +48,6 @@ This is the 90% path.
 
 4. **Answer** using the packed context. Every claim must cite a node's `sources` field.
 
-5. **Write back:** Append a note to `wiki/notes/<slug>.md` and a line to `wiki/log.md`. Wiki grows from questions.
-
 ## NL-Cypher mode
 
 For structural questions the hybrid index can't handle (aggregations, path queries, type-constrained traversals):
@@ -58,11 +56,11 @@ For structural questions the hybrid index can't handle (aggregations, path queri
 2. Generate a read-only Cypher query. Only these clauses are allowed: `MATCH`, `WHERE`, `RETURN`, `OPTIONAL MATCH`, `WITH`, `ORDER BY`, `LIMIT`. Any `CREATE`/`MERGE`/`SET`/`DELETE`/`CALL` is rejected by the engine.
 3. Run:
    ```
-   kg search --mode cypher "MATCH (p:person)-[:employed_by]->(o:organization) RETURN p.name, o.name"
+   kg cypher "MATCH (p:person)-[:employed_by]->(o:organization) RETURN p.name, o.name"
    ```
 4. Use the results directly (no expand/pack needed for structured output).
 
-ponytail: NL→Cypher generation is model-side in M1. M4 adds a `kg cypher` AST validator. For now, keep Cypher simple and read-only by construction.
+ponytail: NL-to-Cypher generation is model-side in M1. `kg cypher` validates the AST server-side and rejects any non-read clause. Keep Cypher simple and read-only by construction.
 
 ## Deep-search mode
 
@@ -75,7 +73,6 @@ For exploratory questions needing broad coverage:
    - Cache keyed by query slug + graph version; stale on version bump.
 2. Read the index first. Progressive disclosure: index → entity page → raw (last resort).
 3. Query never touches `raw/` by default. Only deep-search reads raw as explicit last-resort.
-4. Write back a note to `wiki/notes/`.
 
 ## What this skill does NOT do
 

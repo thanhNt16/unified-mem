@@ -39,7 +39,7 @@ kg pack <subgraph> --budget-tokens 4000  # rank + trim to markdown
 **Pipeline:**
 
 ```
-kg search --mode cypher "<generated Cypher>"
+kg cypher "<generated Cypher>"
 ```
 
 **Allowed Cypher clauses:** `MATCH`, `OPTIONAL MATCH`, `WHERE`, `WITH`, `RETURN`, `ORDER BY`, `LIMIT`.
@@ -101,13 +101,3 @@ Question received
 ```
 
 Override: the user can say "use Cypher" or "deep search" to force a mode.
-
----
-
-## Read path writes back
-
-Every substantive answer (all modes) appends:
-- A note to `wiki/notes/<slug>.md` — the question + one-line answer summary
-- A line to `wiki/log.md` — timestamped entry
-
-This is how the wiki grows from questions — continual learning on the read side.
