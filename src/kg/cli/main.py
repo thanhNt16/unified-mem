@@ -27,6 +27,7 @@ from kg.cli import init as init_cmd  # noqa: E402
 from kg.cli import raw as raw_cmd  # noqa: E402
 from kg.cli import status as status_cmd  # noqa: E402
 from kg.cli import config_cmd  # noqa: E402
+from kg.cli import wiki_cli  # noqa: E402
 
 app.command(name="init")(init_cmd.init_cli)
 app.add_typer(raw_cmd.raw_app, name="raw")
@@ -34,6 +35,7 @@ app.command(name="status")(status_cmd.status_cli)
 config_app = typer.Typer(help="Read kg config.")
 app.add_typer(config_app, name="config")
 config_app.command(name="get")(config_cmd.config_cli)
+app.add_typer(wiki_cli.wiki_app, name="wiki")
 
 from kg.cli import save as save_cmd        # noqa: E402
 from kg.cli import query as query_cmd      # noqa: E402
