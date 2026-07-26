@@ -10,7 +10,6 @@ from kg.dedup import Deduper
 from kg.dream import dream_candidates
 from kg.embed import make_embedder
 from kg.gate import AuditRecord, Gate
-from kg.ontology import Edge
 from kg.paths import KgPaths
 from kg.resolve import Resolver
 from kg.storage.sqlite import SQLiteAdapter
@@ -38,34 +37,14 @@ def _append_audit(paths: KgPaths, audit: AuditRecord, reason: str | None) -> Non
         typer.echo(f"warning: database committed; lineage log append failed: {exc}", err=True)
 
 
-def _edges_before(adapter: SQLiteAdapter, loser_id: str) -> list[dict]:
-    return [
-        Edge.model_validate_json(r["data"]).model_dump(mode="json")
-        for r in adapter.conn.execute(
-            "SELECT data FROM edges WHERE source=? OR target=?",
-            (loser_id, loser_id),
-        ).fetchall()
-    ]
-
-
 def merge_cli(
     winner_id: str = typer.Argument(..., metavar="WINNER_ID"),
     loser_id: str = typer.Argument(..., metavar="LOSER_ID"),
     reason: str | None = typer.Option(None, "--reason"),
 ) -> None:
     paths = KgPaths.for_cwd()
-    adapter, gate = _gate(paths)
-    winner = adapter.get(winner_id)
-    loser = adapter.get(loser_id)
-    # Gate performs authoritative validation in the same transaction.
-    audit = AuditRecord(
-        timestamp=gate._now(), action="merge",
-        winner_id=winner_id, loser_id=loser_id, review_edge_id=None,
-        winner_before=winner.model_dump(mode="json") if winner else None,
-        loser_before=loser.model_dump(mode="json") if loser else None,
-        edges_before=_edges_before(adapter, loser_id),
-    )
-    gate.merge(winner_id, loser_id)
+    _, gate = _gate(paths)
+    audit = gate.merge(winner_id, loser_id, reason=reason)
     _append_audit(paths, audit, reason)
     typer.echo(f"merged {loser_id} into {winner_id}")
 

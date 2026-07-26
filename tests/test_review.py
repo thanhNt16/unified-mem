@@ -146,10 +146,64 @@ def test_review_merge_rolls_back_edge_and_nodes_on_mid_merge_error(tmp_path, mon
 def test_explicit_merge_requires_distinct_active_same_type_nodes(tmp_path):
     adapter, gate = _gate(tmp_path)
     winner, loser, _ = _seed(adapter)
-    gate.merge(winner.id, loser.id)
+    audit = gate.merge(winner.id, loser.id)
+    assert audit.action == "merge"
+    assert audit.winner_before == winner.model_dump(mode="json")
+    assert audit.loser_before == loser.model_dump(mode="json")
     assert adapter.get(winner.id).status == "active"
     assert adapter.get(loser.id).merged_into == winner.id
 
     for args in [(winner.id, winner.id), (winner.id, "missing")]:
         with pytest.raises(ValueError):
             gate.merge(*args)
+
+
+def test_merge_audit_captures_collision_closure_and_metadata_union(tmp_path):
+    adapter, gate = _gate(tmp_path)
+    winner, loser, review = _seed(adapter)
+    org = Node(id="u:organization:o", type="organization", name="Org")
+    winner_edge = Edge(
+        id=f"{winner.id}|employed_by|{org.id}", semantic_type="employed_by",
+        summary="winner summary", confidence=0.4, sources=[{"doc": "winner.md"}],
+    )
+    loser_edge = Edge(
+        id=f"{loser.id}|employed_by|{org.id}", semantic_type="employed_by",
+        summary="loser", confidence=0.9, sources=[{"doc": "loser.md"}],
+    )
+    adapter.upsert_nodes([org])
+    adapter.upsert_edges([winner_edge, loser_edge])
+
+    audit = gate.review_merge(review.id, winner.id, loser.id)
+
+    assert {e["id"] for e in audit.edges_before} == {
+        review.id, winner_edge.id, loser_edge.id,
+    }
+    assert audit.edges_before[0] == review.model_dump(mode="json")
+    row = adapter.conn.execute(
+        "SELECT data FROM edges WHERE id=?", (winner_edge.id,)
+    ).fetchone()
+    merged = Edge.model_validate_json(row["data"])
+    assert merged.sources == [{"doc": "winner.md"}, {"doc": "loser.md"}]
+    assert merged.summary == "winner summary"
+    assert merged.confidence == 0.9
+
+
+def test_explicit_merge_rolls_back_and_returns_no_audit_on_error(tmp_path, monkeypatch):
+    adapter, gate = _gate(tmp_path)
+    winner, loser, _ = _seed(adapter)
+    before = _snapshot(adapter)
+    original = adapter.upsert_nodes
+    calls = 0
+
+    def fail_second(nodes):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("forced")
+        return original(nodes)
+
+    monkeypatch.setattr(adapter, "upsert_nodes", fail_second)
+    with pytest.raises(RuntimeError, match="forced"):
+        gate.merge(winner.id, loser.id)
+
+    assert _snapshot(adapter) == before

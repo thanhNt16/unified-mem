@@ -202,19 +202,80 @@ class Gate:
         report.edges_upserted = len(edges_out)
         return report
 
-    def merge(self, winner_id: str, loser_id: str) -> None:
+    def merge(
+        self, winner_id: str, loser_id: str, *,
+        review_edge_id: str | None = None, reason: str | None = None,
+    ) -> AuditRecord:
         with self.adapter.transaction():
-            w = self.adapter.get(winner_id)
-            l = self.adapter.get(loser_id)
-            if not w or not l:
-                raise ValueError(f"unknown node(s): {winner_id}, {loser_id}")
-            if winner_id == loser_id:
-                raise ValueError("cannot merge a node into itself")
-            if w.status != "active" or l.status != "active":
-                raise ValueError("both endpoints must be active")
-            if w.type != l.type:
-                raise ValueError(f"type mismatch {w.type} != {l.type}")
+            w, l, winner_before, loser_before, edges_before = (
+                self._capture_merge_preimages(
+                    winner_id, loser_id, review_edge_id=review_edge_id
+                )
+            )
             self._merge_inplace(w, l, winner_id, loser_id)
+            if review_edge_id:
+                self.adapter.conn.execute(
+                    "DELETE FROM edges WHERE id=?", (review_edge_id,)
+                )
+            return AuditRecord(
+                timestamp=self._now(),
+                action="review_confirm" if review_edge_id else "merge",
+                winner_id=winner_id, loser_id=loser_id,
+                review_edge_id=review_edge_id,
+                winner_before=winner_before, loser_before=loser_before,
+                edges_before=edges_before,
+            )
+
+    def _capture_merge_preimages(
+        self, winner_id: str, loser_id: str, *,
+        review_edge_id: str | None = None,
+    ) -> tuple[Node, Node, dict, dict, list[dict]]:
+        if winner_id == loser_id:
+            raise ValueError("cannot merge a node into itself")
+        w = self.adapter.get(winner_id)
+        l = self.adapter.get(loser_id)
+        if not w or not l:
+            raise ValueError(f"unknown node(s): {winner_id}, {loser_id}")
+        if w.status != "active" or l.status != "active":
+            raise ValueError("both endpoints must be active")
+        if w.type != l.type:
+            raise ValueError(f"type mismatch {w.type} != {l.type}")
+
+        captured: dict[str, Edge] = {}
+        if review_edge_id:
+            review = self._load_review_edge(review_edge_id)
+            src, _, tgt = review_edge_id.split("|", 2)
+            if {winner_id, loser_id} != {src, tgt}:
+                raise ValueError("winner/loser must be the edge endpoints")
+            captured[review_edge_id] = review
+
+        loser_rows = self.adapter.conn.execute(
+            "SELECT id, data FROM edges WHERE source=? OR target=? ORDER BY id",
+            (loser_id, loser_id),
+        ).fetchall()
+        for row in loser_rows:
+            edge = Edge.model_validate_json(row["data"])
+            captured[row["id"]] = edge
+            src, sem, tgt = row["id"].split("|", 2)
+            rebuilt_id = edge_id(
+                winner_id if src == loser_id else src,
+                sem,
+                winner_id if tgt == loser_id else tgt,
+            )
+            existing = self.adapter.conn.execute(
+                "SELECT data FROM edges WHERE id=?", (rebuilt_id,)
+            ).fetchone()
+            if existing:
+                captured[rebuilt_id] = Edge.model_validate_json(existing["data"])
+
+        ordered_ids = (
+            ([review_edge_id] if review_edge_id else [])
+            + sorted(id_ for id_ in captured if id_ != review_edge_id)
+        )
+        return (
+            w, l, w.model_dump(mode="json"), l.model_dump(mode="json"),
+            [captured[id_].model_dump(mode="json") for id_ in ordered_ids],
+        )
 
     def _merge_inplace(self, w, l, winner_id, loser_id) -> None:
         w.aliases = list(dict.fromkeys([*w.aliases, l.name, *l.aliases]))
@@ -304,38 +365,15 @@ class Gate:
         self, edge_id: str, winner_id: str, loser_id: str
     ) -> AuditRecord:
         with self.adapter.transaction():
-            e = self._load_review_edge(edge_id)
-            src, _, tgt = edge_id.split("|", 2)
-            endpoints = {src, tgt}
-            if {winner_id, loser_id} != endpoints:
-                raise ValueError("winner/loser must be the edge endpoints")
-            if winner_id == loser_id:
-                raise ValueError("cannot merge a node into itself")
-            w = self.adapter.get(winner_id)
-            l = self.adapter.get(loser_id)
-            if not w or not l:
-                raise ValueError(f"unknown node(s): {winner_id}, {loser_id}")
-            if w.status != "active" or l.status != "active":
-                raise ValueError("both endpoints must be active")
-            if w.type != l.type:
-                raise ValueError(f"type mismatch {w.type} != {l.type}")
-
-            edges_before = [
-                Edge.model_validate_json(r["data"]).model_dump(mode="json")
-                for r in self.adapter.conn.execute(
-                    "SELECT data FROM edges WHERE source=? OR target=?",
-                    (loser_id, loser_id),
-                ).fetchall()
-            ]
-            winner_before = w.model_dump(mode="json")
-            loser_before = l.model_dump(mode="json")
-
+            w, l, winner_before, loser_before, edges_before = (
+                self._capture_merge_preimages(
+                    winner_id, loser_id, review_edge_id=edge_id
+                )
+            )
             self._merge_inplace(w, l, winner_id, loser_id)
             self.adapter.conn.execute("DELETE FROM edges WHERE id=?", (edge_id,))
-
             return AuditRecord(
-                timestamp=self._now(),
-                action="review_confirm",
+                timestamp=self._now(), action="review_confirm",
                 winner_id=winner_id, loser_id=loser_id,
                 review_edge_id=edge_id,
                 winner_before=winner_before, loser_before=loser_before,

@@ -48,6 +48,23 @@ def test_merge_first_argument_wins_and_writes_injection_safe_audit(tmp_path, mon
     assert audit["loser_before"] == loser.model_dump(mode="json")
 
 
+def test_merge_cli_performs_node_reads_only_inside_gate_transaction(tmp_path, monkeypatch):
+    paths, adapter, winner, loser, review = _project(tmp_path, monkeypatch)
+    original = SQLiteAdapter.get
+
+    def require_transaction(self, node_id):
+        assert self._in_txn, f"preimage read outside transaction: {node_id}"
+        return original(self, node_id)
+
+    monkeypatch.setattr(SQLiteAdapter, "get", require_transaction)
+    result = runner.invoke(app, ["merge", winner.id, loser.id])
+
+    assert result.exit_code == 0, result.output
+    audit = _audit(paths)
+    assert audit["winner_before"] == winner.model_dump(mode="json")
+    assert audit["loser_before"] == loser.model_dump(mode="json")
+
+
 def test_review_confirm_requires_explicit_endpoint_winner_and_consumes_edge(tmp_path, monkeypatch):
     paths, adapter, winner, loser, review = _project(tmp_path, monkeypatch)
     result = runner.invoke(app, [
@@ -93,6 +110,21 @@ def test_review_list_only_pending_and_read_only(tmp_path, monkeypatch):
     assert review.id in result.output
     assert rejected.id not in result.output
     assert paths.kg_db.stat().st_mtime_ns == before
+
+
+def test_failed_merge_rolls_back_without_audit_append(tmp_path, monkeypatch):
+    paths, adapter, winner, loser, review = _project(tmp_path, monkeypatch)
+
+    def fail(*args):
+        raise RuntimeError("forced")
+
+    monkeypatch.setattr("kg.gate.Gate._merge_inplace", fail)
+    result = runner.invoke(app, ["merge", winner.id, loser.id])
+
+    assert result.exit_code != 0
+    assert not paths.wiki.joinpath("log.md").exists()
+    adapter = SQLiteAdapter(paths.kg_db)
+    assert adapter.get(winner.id).status == adapter.get(loser.id).status == "active"
 
 
 def test_audit_failure_warns_after_committed_merge(tmp_path, monkeypatch):
