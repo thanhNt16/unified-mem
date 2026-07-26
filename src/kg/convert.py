@@ -42,7 +42,8 @@ def _convert_url(url: str) -> str:
 
 def convert_source(source: str, type: str | None, title: str | None) -> ConvertedDoc:
     kind = type or _detect_type(source)
-    if kind == "text":
+    if kind in ("text", "conversation"):
+        # conversation transcripts are passed as the raw markdown body
         md = source if source != "-" else sys.stdin.read()
     elif kind in ("md", "markdown"):
         md = Path(source).read_text(encoding="utf-8")

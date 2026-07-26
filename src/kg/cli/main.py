@@ -24,5 +24,7 @@ def _root(
 
 
 from kg.cli import init as init_cmd  # noqa: E402
+from kg.cli import raw as raw_cmd  # noqa: E402
 
 app.command(name="init")(init_cmd.init_cli)
+app.add_typer(raw_cmd.raw_app, name="raw")
