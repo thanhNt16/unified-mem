@@ -49,5 +49,8 @@ app.command(name="resolve")(rcli.resolve_cli)
 app.command(name="dedup-check")(rcli.dedup_check_cli)
 
 from kg.cli import snapshot_cmd  # noqa: E402
+from kg.cli import review as review_cmd  # noqa: E402
 
 app.command(name="snapshot")(snapshot_cmd.snapshot_cli)
+app.command(name="merge")(review_cmd.merge_cli)
+app.add_typer(review_cmd.review_app, name="review")

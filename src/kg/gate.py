@@ -29,6 +29,18 @@ class SaveReport:
     dropped_edges: list[dict] = field(default_factory=list)
 
 
+@dataclass
+class AuditRecord:
+    timestamp: str
+    action: str
+    winner_id: str | None
+    loser_id: str | None
+    review_edge_id: str | None
+    winner_before: dict | None
+    loser_before: dict | None
+    edges_before: list[dict]
+
+
 class Gate:
     def __init__(self, adapter, resolver, deduper, embedder, config, user_id):
         self.adapter = adapter
@@ -194,74 +206,156 @@ class Gate:
         with self.adapter.transaction():
             w = self.adapter.get(winner_id)
             l = self.adapter.get(loser_id)
-            if not w or not l or winner_id == loser_id:
-                return
+            if not w or not l:
+                raise ValueError(f"unknown node(s): {winner_id}, {loser_id}")
+            if winner_id == loser_id:
+                raise ValueError("cannot merge a node into itself")
+            if w.status != "active" or l.status != "active":
+                raise ValueError("both endpoints must be active")
+            if w.type != l.type:
+                raise ValueError(f"type mismatch {w.type} != {l.type}")
+            self._merge_inplace(w, l, winner_id, loser_id)
 
-            w.aliases = list(dict.fromkeys([*w.aliases, l.name, *l.aliases]))
-            w.sources = self._merge_unique(w.sources, l.sources)
-            for k, v in l.attributes.items():
-                if k in w.attributes and w.attributes[k] != v:
-                    w.attribute_conflicts.append(
-                        {"key": k, "winner": w.attributes[k], "loser": v})
-                else:
-                    w.attributes[k] = v
-            if l.summary and (not w.summary or len(l.summary) > len(w.summary)):
-                w.summary = l.summary
-            w.embedding = full_context_embedding(
-                w, self.embedder, self.config.embedding.embed_fields)
-            w.updated_at = self._now()
-            self.adapter.upsert_nodes([w])
+    def _merge_inplace(self, w, l, winner_id, loser_id) -> None:
+        w.aliases = list(dict.fromkeys([*w.aliases, l.name, *l.aliases]))
+        w.sources = self._merge_unique(w.sources, l.sources)
+        for k, v in l.attributes.items():
+            if k in w.attributes and w.attributes[k] != v:
+                w.attribute_conflicts.append(
+                    {"key": k, "winner": w.attributes[k], "loser": v})
+            else:
+                w.attributes[k] = v
+        if l.summary and (not w.summary or len(l.summary) > len(w.summary)):
+            w.summary = l.summary
+        w.embedding = full_context_embedding(
+            w, self.embedder, self.config.embedding.embed_fields)
+        w.updated_at = self._now()
+        self.adapter.upsert_nodes([w])
 
-            rows = self.adapter.conn.execute(
-                "SELECT id, data FROM edges WHERE source=? OR target=?",
-                (loser_id, loser_id),
-            ).fetchall()
-            old_ids: list[str] = []
-            new_edges: list[Edge] = []
-            for r in rows:
-                old_id = r["id"]
-                old_edge = Edge.model_validate_json(r["data"])
-                src, sem, tgt = old_id.split("|", 2)
-                new_src = winner_id if src == loser_id else src
-                new_tgt = winner_id if tgt == loser_id else tgt
-                old_ids.append(old_id)
-                if new_src == new_tgt:
-                    continue
-                rebuilt = Edge(
-                    id=edge_id(new_src, sem, new_tgt),
-                    semantic_type=old_edge.semantic_type,
-                    summary=old_edge.summary,
-                    confidence=old_edge.confidence,
-                    sources=old_edge.sources,
-                    valid_from=old_edge.valid_from,
-                    valid_until=old_edge.valid_until,
-                    status=old_edge.status,
-                )
-                existing_row = self.adapter.conn.execute(
-                    "SELECT data FROM edges WHERE id=?", (rebuilt.id,)
-                ).fetchone()
-                if existing_row:
-                    existing = Edge.model_validate_json(existing_row["data"])
-                    rebuilt.sources = self._merge_unique(
-                        existing.sources, rebuilt.sources)
-                    if existing.summary and (
-                        not rebuilt.summary
-                        or len(existing.summary) >= len(rebuilt.summary)
-                    ):
-                        rebuilt.summary = existing.summary
-                    rebuilt.confidence = max(existing.confidence, rebuilt.confidence)
-                    rebuilt.valid_from = existing.valid_from or rebuilt.valid_from
-                    rebuilt.valid_until = existing.valid_until or rebuilt.valid_until
-                    rebuilt.status = existing.status
-                new_edges.append(rebuilt)
-            for old_id in old_ids:
-                self.adapter.conn.execute("DELETE FROM edges WHERE id=?", (old_id,))
-            if new_edges:
-                self.adapter.upsert_edges(new_edges)
+        rows = self.adapter.conn.execute(
+            "SELECT id, data FROM edges WHERE source=? OR target=?",
+            (loser_id, loser_id),
+        ).fetchall()
+        old_ids: list[str] = []
+        new_edges: list[Edge] = []
+        for r in rows:
+            old_id = r["id"]
+            old_edge = Edge.model_validate_json(r["data"])
+            src, sem, tgt = old_id.split("|", 2)
+            new_src = winner_id if src == loser_id else src
+            new_tgt = winner_id if tgt == loser_id else tgt
+            old_ids.append(old_id)
+            if new_src == new_tgt:
+                continue
+            rebuilt = Edge(
+                id=edge_id(new_src, sem, new_tgt),
+                semantic_type=old_edge.semantic_type,
+                summary=old_edge.summary,
+                confidence=old_edge.confidence,
+                sources=old_edge.sources,
+                valid_from=old_edge.valid_from,
+                valid_until=old_edge.valid_until,
+                status=old_edge.status,
+            )
+            existing_row = self.adapter.conn.execute(
+                "SELECT data FROM edges WHERE id=?", (rebuilt.id,)
+            ).fetchone()
+            if existing_row:
+                existing = Edge.model_validate_json(existing_row["data"])
+                rebuilt.sources = self._merge_unique(
+                    existing.sources, rebuilt.sources)
+                if existing.summary and (
+                    not rebuilt.summary
+                    or len(existing.summary) >= len(rebuilt.summary)
+                ):
+                    rebuilt.summary = existing.summary
+                rebuilt.confidence = max(existing.confidence, rebuilt.confidence)
+                rebuilt.valid_from = existing.valid_from or rebuilt.valid_from
+                rebuilt.valid_until = existing.valid_until or rebuilt.valid_until
+                rebuilt.status = existing.status
+            new_edges.append(rebuilt)
+        for old_id in old_ids:
+            self.adapter.conn.execute("DELETE FROM edges WHERE id=?", (old_id,))
+        if new_edges:
+            self.adapter.upsert_edges(new_edges)
 
-            l.status = "tombstoned"
-            l.merged_into = winner_id
-            self.adapter.upsert_nodes([l])
+        l.status = "tombstoned"
+        l.merged_into = winner_id
+        self.adapter.upsert_nodes([l])
+
+    def _load_review_edge(self, edge_id: str) -> Edge:
+        row = self.adapter.conn.execute(
+            "SELECT data FROM edges WHERE id=?", (edge_id,)
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"unknown edge {edge_id}")
+        e = Edge.model_validate_json(row["data"])
+        if e.semantic_type != "same_as":
+            raise ValueError("edge is not same_as")
+        # Check both relational column and serialized payload.
+        row2 = self.adapter.conn.execute(
+            "SELECT status FROM edges WHERE id=?", (edge_id,)
+        ).fetchone()
+        if row2["status"] != "pending" or e.status != "pending":
+            raise ValueError(f"edge {edge_id} not pending")
+        return e
+
+    def review_merge(
+        self, edge_id: str, winner_id: str, loser_id: str
+    ) -> AuditRecord:
+        with self.adapter.transaction():
+            e = self._load_review_edge(edge_id)
+            src, _, tgt = edge_id.split("|", 2)
+            endpoints = {src, tgt}
+            if {winner_id, loser_id} != endpoints:
+                raise ValueError("winner/loser must be the edge endpoints")
+            if winner_id == loser_id:
+                raise ValueError("cannot merge a node into itself")
+            w = self.adapter.get(winner_id)
+            l = self.adapter.get(loser_id)
+            if not w or not l:
+                raise ValueError(f"unknown node(s): {winner_id}, {loser_id}")
+            if w.status != "active" or l.status != "active":
+                raise ValueError("both endpoints must be active")
+            if w.type != l.type:
+                raise ValueError(f"type mismatch {w.type} != {l.type}")
+
+            edges_before = [
+                Edge.model_validate_json(r["data"]).model_dump(mode="json")
+                for r in self.adapter.conn.execute(
+                    "SELECT data FROM edges WHERE source=? OR target=?",
+                    (loser_id, loser_id),
+                ).fetchall()
+            ]
+            winner_before = w.model_dump(mode="json")
+            loser_before = l.model_dump(mode="json")
+
+            self._merge_inplace(w, l, winner_id, loser_id)
+            self.adapter.conn.execute("DELETE FROM edges WHERE id=?", (edge_id,))
+
+            return AuditRecord(
+                timestamp=self._now(),
+                action="review_confirm",
+                winner_id=winner_id, loser_id=loser_id,
+                review_edge_id=edge_id,
+                winner_before=winner_before, loser_before=loser_before,
+                edges_before=edges_before,
+            )
+
+    def reject_review(self, edge_id: str) -> AuditRecord:
+        with self.adapter.transaction():
+            e = self._load_review_edge(edge_id)
+            src, _, tgt = edge_id.split("|", 2)
+            edges_before = [e.model_dump(mode="json")]
+            e.status = "rejected"
+            self.adapter.upsert_edges([e])
+            return AuditRecord(
+                timestamp=self._now(),
+                action="review_reject",
+                winner_id=None, loser_id=None, review_edge_id=edge_id,
+                winner_before=None, loser_before=None,
+                edges_before=edges_before,
+            )
 
     def _merge_candidate(self, winner_id, candidate, resolution) -> None:
         winner = self.adapter.get(winner_id)
