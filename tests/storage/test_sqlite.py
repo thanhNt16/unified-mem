@@ -73,3 +73,37 @@ def test_neighbors_two_hop(tmp_path):
     sg = a.neighbors(["u:person:a"], depth=2)
     ids = {n.id for n in sg.nodes}
     assert "u:object:c" in ids  # reached via b
+
+
+# --- Task 6: FTS5 + sqlite-vec search ---
+def test_fts_search(tmp_path):
+    a = _adapter(tmp_path)
+    a.upsert_nodes([
+        Node(id="u:person:d", type="person", name="Demis Hassabis", summary="DeepMind founder"),
+        Node(id="u:person:o", type="person", name="Other", summary="unrelated"),
+    ])
+    hits = a.fts_search("DeepMind founder", k=5)
+    ids = [h[0] for h in hits]
+    assert "u:person:d" in ids
+    assert ids[0] == "u:person:d"
+
+
+def test_fts_search_type_filter(tmp_path):
+    a = _adapter(tmp_path)
+    a.upsert_nodes([
+        Node(id="u:person:d", type="person", name="Demis", summary="x"),
+        Node(id="u:object:d2", type="object", name="Demis-tool", summary="x"),
+    ])
+    hits = a.fts_search("Demis", k=5, type_filter="person")
+    assert all(h[0].startswith("u:person:") for h in hits)
+
+
+def test_vec_search(tmp_path):
+    a = SQLiteAdapter(tmp_path / "kg.db")
+    base = [1.0] * 384
+    n1 = Node(id="u:person:a", type="person", name="A", embedding=base)
+    n2 = Node(id="u:person:b", type="person", name="B",
+              embedding=[0.5 if i == 0 else 1.0 for i in range(384)])
+    a.upsert_nodes([n1, n2])
+    hits = a.vec_search(base, k=2)
+    assert hits[0][0] == "u:person:a"  # identical → highest cosine

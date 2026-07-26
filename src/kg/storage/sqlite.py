@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS edges(
 CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(
   node_id UNINDEXED, name, summary, type UNINDEXED
 );
+CREATE VIRTUAL TABLE IF NOT EXISTS nodes_vec USING vec0(
+  node_id TEXT PRIMARY KEY, embedding FLOAT[384]
+);
 """
 
 
@@ -58,6 +61,11 @@ class SQLiteAdapter(StorageAdapter):
                 "INSERT INTO nodes_fts(node_id, name, summary, type) VALUES(?,?,?,?)",
                 (n.id, n.name, n.summary or "", n.type),
             )
+            if n.embedding is not None:
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO nodes_vec(node_id, embedding) VALUES (?, ?)",
+                    (n.id, sqlite_vec.serialize_float32(n.embedding)),
+                )
         self.conn.commit()
         return len(nodes)
 
@@ -159,7 +167,38 @@ class SQLiteAdapter(StorageAdapter):
         return Subgraph(nodes=nodes, edges=edges)
 
     def fts_search(self, query, k=10, type_filter=None):
-        raise NotImplementedError
+        # BM25 rank from FTS5 — lower (more negative) = better match, so we
+        # ORDER BY r ascending. Active nodes only.
+        sql = (
+            "SELECT n.id, bm25(nodes_fts) AS r FROM nodes_fts f "
+            "JOIN nodes n ON n.id = f.node_id "
+            "WHERE nodes_fts MATCH ? AND n.status = 'active'"
+        )
+        params: list = [query]
+        if type_filter:
+            sql += " AND n.data LIKE ?"
+            params.append(f'%"type": "{type_filter}"%')
+        sql += " ORDER BY r LIMIT ?"
+        params.append(k)
+        rows = self.conn.execute(sql, params).fetchall()
+        return [(r["id"], float(r["r"])) for r in rows]
 
     def vec_search(self, embedding, k=10, type_filter=None):
-        raise NotImplementedError
+        rows = self.conn.execute(
+            "SELECT node_id, distance FROM nodes_vec "
+            "WHERE embedding MATCH ? AND k = ? "
+            "ORDER BY distance",
+            (sqlite_vec.serialize_float32(embedding), k),
+        ).fetchall()
+        out = []
+        for r in rows:
+            n = self.get(r["node_id"])
+            if not n or n.status != "active":
+                continue
+            if type_filter and n.type != type_filter:
+                continue
+            score = 1.0 - float(r["distance"])  # distance → similarity-ish
+            out.append((r["node_id"], score))
+        # Ensure ordering: highest score (lowest distance) first.
+        out.sort(key=lambda t: t[1], reverse=True)
+        return out
