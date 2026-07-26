@@ -21,6 +21,7 @@ editor only if a verified schema-stable patcher is required.
 """
 from __future__ import annotations
 
+import json
 import tomllib
 from pathlib import Path
 
@@ -36,17 +37,21 @@ CODEX_AGENTS_REL = Path("AGENTS.md")
 CODEX_CONFIG_TEMPLATE = """\
 # Managed by kg install codex. Replace the file to disable.
 [mcp_servers.kg]
-command = "uv"
-args = ["run", "kg", "mcp", "serve", "--project-root", "{project}"]
+command = "kg"
+args = ["mcp", "serve", "--project-root", {project}]
 """
 
 
+def _render_config(project: Path) -> str:
+    return CODEX_CONFIG_TEMPLATE.format(project=json.dumps(str(project)))
+
+
 def _codex_config_bytes(project: Path) -> bytes:
-    return CODEX_CONFIG_TEMPLATE.format(project=str(project)).encode("utf-8")
+    return _render_config(project).encode("utf-8")
 
 
 def _render_manual_patch(project: Path) -> str:
-    return "Add the following table to .codex/config.toml manually:\n\n" + CODEX_CONFIG_TEMPLATE.format(project=str(project))
+    return "Add the following table to .codex/config.toml manually:\n\n" + _render_config(project)
 
 
 def plan_codex_install(project_root: Path, home_root: Path, *, skills_src: Path | None = None) -> InstallPlan:
@@ -98,5 +103,5 @@ def apply_plan(plan: InstallPlan):
     return common.apply_plan(plan)
 
 
-def uninstall(manifest):
-    return common.uninstall(manifest, Harness.CODEX)
+def uninstall(manifest, project_root):
+    return common.uninstall(manifest, Harness.CODEX, project_root)

@@ -15,6 +15,7 @@ from kg.install.codex import (
     plan_codex_install,
     uninstall,
 )
+from kg.install.common import content_hash
 from kg.install.manifest import Harness, load_manifest
 
 
@@ -44,14 +45,37 @@ def test_apply_writes_toml_skills_agents(tmp_path):
     common.apply_plan(planned)
     config = project / CODEX_CONFIG_REL
     data = tomllib.loads(config.read_text())
-    assert data["mcp_servers"]["kg"]["command"] == "uv"
-    assert data["mcp_servers"]["kg"]["args"] == ["run", "kg", "mcp", "serve", "--project-root", str(project)]
+    assert data["mcp_servers"]["kg"]["command"] == "kg"
+    assert data["mcp_servers"]["kg"]["args"] == [
+        "mcp", "serve", "--project-root", str(project)
+    ]
     assert (project / ".agents/skills/kg-extract/SKILL.md").read_text().startswith("# kg-extract")
     text = (project / CODEX_AGENTS_REL).read_text()
     assert "kg-install:codex:begin" in text and "kg-install:codex:end" in text
     loaded = load_manifest(project)
     assert loaded.harness is Harness.CODEX
     assert loaded.transaction_state.value == "committed"
+
+
+def test_project_path_with_quote_generates_parseable_toml(tmp_path):
+    home = tmp_path / "home"
+    project = tmp_path / 'project"quoted'
+    skills = tmp_path / "skills"
+    home.mkdir()
+    project.mkdir()
+    skills.mkdir()
+    for name in common.SKILLS:
+        directory = skills / name
+        directory.mkdir()
+        (directory / "SKILL.md").write_text(name)
+
+    planned = plan_codex_install(project, home, skills_src=skills)
+    config = next(write for write in planned.writes if write.path == project / CODEX_CONFIG_REL)
+    parsed = tomllib.loads(config.data.decode())
+    assert parsed["mcp_servers"]["kg"] == {
+        "command": "kg",
+        "args": ["mcp", "serve", "--project-root", str(project.resolve())],
+    }
 
 
 def test_reinstall_noop(tmp_path):
@@ -72,11 +96,34 @@ def test_reinstall_noop(tmp_path):
 def test_uninstall_reverses(tmp_path):
     home, project, planned, _ = plan(tmp_path)
     manifest = common.apply_plan(planned)
-    uninstall(manifest)
+    uninstall(manifest, project)
     assert not (project / CODEX_CONFIG_REL).exists()
     assert not (project / ".agents/skills/kg-extract").exists()
     assert not (project / CODEX_AGENTS_REL).exists()
     assert not (project / ".kg-install-manifest.json").exists()
+
+
+def test_uninstall_rejects_foreign_manifest_root_without_touching_file(tmp_path):
+    caller = tmp_path / "caller"
+    victim = tmp_path / "victim"
+    caller.mkdir()
+    victim.mkdir()
+    target = victim / "owned.txt"
+    target.write_text("keep")
+    manifest = common.InstallManifest(
+        project_root=str(victim),
+        harness=Harness.CODEX,
+        transaction_state=common.TransactionState.COMMITTED,
+        artifacts=[common.InstalledArtifact(
+            path=str(target),
+            kind=common.ArtifactKind.OWNED_FILE,
+            content_sha256=common.content_hash(target.read_bytes()),
+        )],
+    )
+
+    with pytest.raises(InstallConflict, match="project_root"):
+        uninstall(manifest, caller)
+    assert target.read_text() == "keep"
 
 
 def test_uninstall_wholly_owned_toml_drift_refused(tmp_path):
@@ -85,7 +132,7 @@ def test_uninstall_wholly_owned_toml_drift_refused(tmp_path):
     config = project / CODEX_CONFIG_REL
     config.write_text(config.read_text() + '\n[mcp_servers.other]\ncommand = "x"\n')
     with pytest.raises(InstallConflict, match="drift"):
-        uninstall(manifest)
+        uninstall(manifest, project)
     assert tomllib.loads(config.read_text())["mcp_servers"]["other"] == {"command": "x"}
 
 
@@ -94,7 +141,7 @@ def test_drift_refusal(tmp_path):
     manifest = common.apply_plan(planned)
     (project / ".agents/skills/kg-query/SKILL.md").write_text("edited")
     with pytest.raises(InstallConflict, match="drift"):
-        uninstall(manifest)
+        uninstall(manifest, project)
     assert (project / ".agents/skills/kg-query/SKILL.md").read_text() == "edited"
 
 
@@ -127,6 +174,32 @@ def test_malformed_toml_refused(tmp_path):
     with pytest.raises(InstallConflict, match="Malformed"):
         plan_codex_install(project, home, skills_src=skills)
     assert (config_dir / "config.toml").read_text() == "not = = toml"
+
+
+def test_common_copy_tree_replace_failure_restores_destination(tmp_path, monkeypatch):
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    backup = tmp_path / "backup"
+    source.mkdir()
+    destination.mkdir()
+    (source / "SKILL.md").write_text("new")
+    (destination / "SKILL.md").write_text("user")
+
+    real_replace = common.os.replace
+    calls = 0
+
+    def fail_second(source_path, destination_path):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("replace failed")
+        real_replace(source_path, destination_path)
+
+    monkeypatch.setattr(common.os, "replace", fail_second)
+    with pytest.raises(OSError, match="replace failed"):
+        common._copy_tree(source, destination, backup)
+
+    assert (destination / "SKILL.md").read_text() == "user"
 
 
 def test_symlink_config_refused(tmp_path):

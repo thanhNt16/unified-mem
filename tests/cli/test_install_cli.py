@@ -194,6 +194,42 @@ def test_uninstall_drift_exits_nonzero(tmp_path):
     assert (project / "AGENTS.md").read_text() == "mutated by user"
 
 
+def test_uninstall_foreign_manifest_root_refuses_without_touching_file(tmp_path):
+    home, project, skills = _roots(tmp_path)
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    target = victim / "owned.txt"
+    target.write_text("keep")
+    manifest = common.InstallManifest(
+        project_root=str(victim),
+        harness=Harness.AGENTS,
+        transaction_state=common.TransactionState.COMMITTED,
+        artifacts=[common.InstalledArtifact(
+            path=str(target),
+            kind=common.ArtifactKind.OWNED_FILE,
+            content_sha256=common.content_hash(target.read_bytes()),
+        )],
+    )
+    (project / ".kg-install-manifest.json").write_text(
+        json.dumps(manifest.to_dict())
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "install", "agents",
+            "--project-root", str(project),
+            "--home-root", str(home),
+            "--skills-src", str(skills),
+            "--uninstall",
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "project_root" in result.output
+    assert target.read_text() == "keep"
+
+
 def test_uninstall_wrong_harness_exits_nonzero(tmp_path):
     home, project, skills = _roots(tmp_path)
     runner.invoke(

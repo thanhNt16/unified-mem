@@ -46,9 +46,9 @@ _APPLIERS = {
 }
 
 
-def _uninstall(harness: Harness, manifest, *, force: bool) -> None:
+def _uninstall(harness: Harness, manifest, project: Path, *, force: bool) -> None:
     if harness is Harness.CLAUDE:
-        claude_inst.uninstall(manifest, force=force)
+        claude_inst.uninstall(manifest, project, force=force)
     else:
         # Other harnesses share the common uninstaller signature (no force).
         {
@@ -56,7 +56,7 @@ def _uninstall(harness: Harness, manifest, *, force: bool) -> None:
             Harness.OPENCODE: opencode_inst.uninstall,
             Harness.CURSOR: cursor_inst.uninstall,
             Harness.AGENTS: agents_inst.uninstall,
-        }[harness](manifest)
+        }[harness](manifest, project)
 
 
 def _resolve_roots(
@@ -124,7 +124,7 @@ def _do_one(
                     err=True,
                 )
                 return 2
-            _uninstall(harness, manifest, force=force)
+            _uninstall(harness, manifest, project, force=force)
             typer.echo(f"uninstalled: {name} (manifest removed)")
             return 0
         kwargs: dict = {}
@@ -141,7 +141,7 @@ def _do_one(
     except InstallConflict as exc:
         typer.echo(f"error [{name}]: {exc}", err=True)
         return 1
-    except FileNotFoundError as exc:
+    except (FileNotFoundError, ValueError) as exc:
         typer.echo(f"error [{name}]: {exc}", err=True)
         return 2
 

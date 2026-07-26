@@ -23,4 +23,4 @@ def plan_agents_install(project_root: Path, home_root: Path, *, skills_src: Path
 
 
 def apply_plan(plan: InstallPlan): return common.apply_plan(plan)
-def uninstall(manifest): return common.uninstall(manifest, Harness.AGENTS)
+def uninstall(manifest, project_root): return common.uninstall(manifest, Harness.AGENTS, project_root)

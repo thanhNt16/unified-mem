@@ -81,7 +81,7 @@ def test_malformed_json_refused(tmp_path):
 def test_uninstall_reverses(tmp_path):
     home, project, planned, _ = plan(tmp_path)
     manifest = common.apply_plan(planned)
-    uninstall(manifest)
+    uninstall(manifest, project)
     assert not (project / CONFIG_REL).exists()
     assert not (project / "AGENTS.md").exists()
     assert not (project / ".kg-install-manifest.json").exists()

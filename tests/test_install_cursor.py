@@ -73,7 +73,7 @@ def test_rule_collision_refused(tmp_path):
 def test_uninstall_reverses(tmp_path):
     home, project, planned, _ = plan(tmp_path)
     manifest = common.apply_plan(planned)
-    uninstall(manifest)
+    uninstall(manifest, project)
     assert not (project / MCP_REL).exists()
     assert not (project / RULE_REL).exists()
     assert not (project / "AGENTS.md").exists()
@@ -85,5 +85,5 @@ def test_drift_refusal(tmp_path):
     manifest = common.apply_plan(planned)
     (project / RULE_REL).write_text("edited")
     with pytest.raises(InstallConflict, match="drift"):
-        uninstall(manifest)
+        uninstall(manifest, project)
     assert (project / RULE_REL).read_text() == "edited"

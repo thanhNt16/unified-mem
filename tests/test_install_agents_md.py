@@ -45,7 +45,7 @@ def test_uninstall_strips_only_marker(tmp_path):
     (project / "AGENTS.md").write_text("# User\n")
     manifest = common.apply_plan(plan_agents_install(project, home))
     (project / "AGENTS.md").write_text((project / "AGENTS.md").read_text() + "more\n")
-    uninstall(manifest)
+    uninstall(manifest, project)
     assert (project / "AGENTS.md").read_text() == "# User\nmore\n"
 
 
@@ -73,7 +73,7 @@ def test_drifted_marker_block_refused(tmp_path):
     begin, end = "<!-- kg-install:agents:begin -->", "<!-- kg-install:agents:end -->"
     (project / "AGENTS.md").write_text(f"{begin}\ntampered\n{end}\n")
     with pytest.raises(InstallConflict, match="drift"):
-        uninstall(manifest)
+        uninstall(manifest, project)
 
 
 def test_symlink_agents_refused(tmp_path):

@@ -22,6 +22,7 @@ from .manifest import (
     InstalledArtifact,
     InstallManifest,
     TransactionState,
+    _check_no_symlink_escape,
     atomic_write,
     content_hash,
     load_manifest,
@@ -222,8 +223,8 @@ def plan_claude_install(
     if not isinstance(servers, dict):
         raise InstallConflict(f"mcpServers must be an object: {mcp_path}")
     wanted_mcp = {
-        "command": "uv",
-        "args": ["run", "kg", "mcp", "serve", "--project-root", str(project)],
+        "command": "kg",
+        "args": ["mcp", "serve", "--project-root", str(project)],
     }
     old_mcp = servers.get(MCP_NAME, _MISSING)
     if old_mcp != _MISSING and old_mcp != wanted_mcp:
@@ -251,9 +252,7 @@ def plan_claude_install(
     session_end = hooks.get("SessionEnd", [])
     if not isinstance(session_end, list):
         raise InstallConflict(f"hooks.SessionEnd must be a list: {settings_path}")
-    argv = [
-        "uv", "run", "kg", "hook", "session-end", "--project-root", str(project)
-    ]
+    argv = ["kg", "hook", "session-end", "--project-root", str(project)]
     command = shlex.join(argv)
     wanted_hook = {
         "matcher": "*",
@@ -326,17 +325,39 @@ def _backup(path: Path, backup: Path) -> tuple[str | None, str | None]:
     return str(backup), content_hash(data)
 
 
-def _copy_skill_atomic(source: Path, destination: Path) -> None:
+def _copy_skill_atomic(
+    source: Path, destination: Path, backup: Path | None = None
+) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     tmp = Path(tempfile.mkdtemp(prefix=".tmp-kg-skill-", dir=destination.parent))
+    moved = False
     try:
         shutil.copytree(source, tmp / destination.name)
         staged = tmp / destination.name
         if destination.exists():
-            shutil.rmtree(destination)
-        os.replace(staged, destination)
+            if backup is None:
+                raise InstallConflict(f"Backup path required to replace skill: {destination}")
+            backup.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(destination, backup)
+            moved = True
+        try:
+            os.replace(staged, destination)
+        except Exception:
+            if moved:
+                if destination.exists():
+                    shutil.rmtree(destination)
+                os.replace(backup, destination)
+            raise
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _restore_replaced_directory(path: Path, backups: dict[Path, Path]) -> None:
+    if path.is_dir():
+        shutil.rmtree(path)
+    backup = backups.get(path)
+    if backup and backup.exists():
+        os.replace(backup, path)
 
 
 def apply_plan(plan: InstallPlan) -> InstallManifest:
@@ -345,22 +366,29 @@ def apply_plan(plan: InstallPlan) -> InstallManifest:
         return plan.existing_manifest
     manifest = InstallManifest(project_root=str(plan.project_root), harness=Harness.CLAUDE)
     backup_root = plan.project_root / ".kg-install-backups" / manifest.transaction_id
+    _check_no_symlink_escape(backup_root, plan.project_root)
     originals: list[tuple[Path, bytes | None, int | None, bool]] = []
+    directory_backups: dict[Path, Path] = {}
     artifacts: list[InstalledArtifact] = []
     try:
         for index, skill in enumerate(plan.skills):
             _validate_target(skill.destination, skill.root)
             existed = skill.destination.exists()
-            backup_path, backup_sha = _backup(
-                skill.destination, backup_root / f"skill-{index}-{skill.destination.name}"
+            backup = backup_root / f"skill-{index}-{skill.destination.name}"
+            backup_path = str(backup) if existed else None
+            backup_sha = _tree_hash(skill.destination) if existed else None
+            _copy_skill_atomic(
+                skill.source, skill.destination, backup if existed else None
             )
+            if existed:
+                directory_backups[skill.destination] = backup
             originals.append((skill.destination, None, None, existed))
-            _copy_skill_atomic(skill.source, skill.destination)
+            content_sha = _tree_hash(skill.destination)
             artifacts.append(
                 InstalledArtifact(
                     path=str(skill.destination),
                     kind=ArtifactKind.COPIED_SKILL,
-                    content_sha256=_tree_hash(skill.destination),
+                    content_sha256=content_sha,
                     backup_path=backup_path,
                     backup_sha256=backup_sha,
                     ownership_marker="kg-install:claude:skill",
@@ -405,10 +433,9 @@ def apply_plan(plan: InstallPlan) -> InstallManifest:
             try:
                 if path.is_dir():
                     shutil.rmtree(path)
-                    # Restore directory backup by matching artifact path.
-                    artifact = next((a for a in artifacts if a.path == str(path)), None)
-                    if artifact and artifact.backup_path:
-                        shutil.copytree(artifact.backup_path, path)
+                    backup = directory_backups.get(path)
+                    if backup and backup.exists():
+                        os.replace(backup, path)
                 elif existed and old is not None:
                     atomic_write(path, old)
                     if mode is not None:
@@ -424,11 +451,16 @@ def _artifact_value_hash(value: Any) -> str:
     return content_hash(json.dumps(value, sort_keys=True).encode())
 
 
-def uninstall(manifest: InstallManifest, *, force: bool = False) -> None:
+def uninstall(manifest: InstallManifest, project_root: Path, *, force: bool = False) -> None:
     """Remove exact owned fragments; refuse drift before any mutation."""
     if manifest.harness is not Harness.CLAUDE:
         raise InstallConflict("Manifest is not a Claude install")
-    project = Path(manifest.project_root).resolve(strict=True)
+    project = Path(project_root).resolve(strict=True)
+    declared = Path(manifest.project_root).resolve(strict=False)
+    if declared != project:
+        raise InstallConflict(
+            f"Manifest project_root {declared} does not match caller's project_root {project}"
+        )
     if manifest.transaction_state is not TransactionState.COMMITTED:
         raise InstallConflict("Cannot uninstall an incomplete transaction")
 

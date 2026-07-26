@@ -11,10 +11,10 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-from .manifest import ArtifactKind, Harness, InstalledArtifact, InstallManifest, TransactionState, atomic_write, content_hash, load_manifest, manifest_path, save_manifest
+from .manifest import ArtifactKind, Harness, InstalledArtifact, InstallManifest, TransactionState, _check_no_symlink_escape, atomic_write, content_hash, load_manifest, manifest_path, save_manifest
 
 SKILLS = ("kg-extract", "kg-query", "kg-dream")
-MCP_ARGV = ("uv", "run", "kg", "mcp", "serve", "--project-root")
+MCP_ARGV = ("kg", "mcp", "serve", "--project-root")
 _MISSING = {"__kg_install_missing__": True}
 
 class InstallConflict(RuntimeError):
@@ -212,12 +212,29 @@ def _backup(path: Path, backup: Path) -> tuple[str | None, str | None]:
     return str(backup), content_hash(data)
 
 
-def _copy_tree(source: Path, destination: Path) -> None:
+def _copy_tree(
+    source: Path, destination: Path, backup: Path | None = None
+) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     tmp = Path(tempfile.mkdtemp(prefix=".tmp-kg-", dir=destination.parent))
+    moved = False
     try:
         shutil.copytree(source, tmp / destination.name)
-        os.replace(tmp / destination.name, destination)
+        staged = tmp / destination.name
+        if destination.exists():
+            if backup is None:
+                raise InstallConflict(f"Backup path required to replace tree: {destination}")
+            backup.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(destination, backup)
+            moved = True
+        try:
+            os.replace(staged, destination)
+        except Exception:
+            if moved:
+                if destination.exists():
+                    shutil.rmtree(destination)
+                os.replace(backup, destination)
+            raise
         dir_fd = os.open(destination.parent, os.O_RDONLY)
         try: os.fsync(dir_fd)
         finally: os.close(dir_fd)
@@ -233,12 +250,13 @@ def apply_plan(plan: InstallPlan) -> InstallManifest:
         return plan.existing_manifest
     manifest = InstallManifest(project_root=str(plan.project_root), harness=plan.harness)
     backup_root = plan.project_root / ".kg-install-backups" / manifest.transaction_id
+    _check_no_symlink_escape(backup_root, plan.project_root)
     originals: list[tuple[Path, bytes | None, int | None, bool]] = []
     artifacts: list[InstalledArtifact] = []
     try:
         for index, skill in enumerate(plan.skills):
             validate_target(skill.destination, skill.root)
-            originals.append((skill.destination, None, None, False)); _copy_tree(skill.source, skill.destination)
+            originals.append((skill.destination, None, None, False)); _copy_tree(skill.source, skill.destination, None)
             artifacts.append(InstalledArtifact(str(skill.destination), ArtifactKind.COPIED_SKILL, tree_hash(skill.destination), ownership_marker=f"kg-install:{plan.harness.value}:skill"))
         for index, write in enumerate(plan.writes):
             validate_target(write.path, write.root)
@@ -268,10 +286,15 @@ def apply_plan(plan: InstallPlan) -> InstallManifest:
         raise
 
 
-def uninstall(manifest: InstallManifest, harness: Harness) -> None:
+def uninstall(manifest: InstallManifest, harness: Harness, project_root: Path) -> None:
     if manifest.harness is not harness or manifest.transaction_state is not TransactionState.COMMITTED:
         raise InstallConflict("Manifest harness/state mismatch")
-    project = Path(manifest.project_root).resolve(strict=True)
+    project = Path(project_root).resolve(strict=True)
+    declared = Path(manifest.project_root).resolve(strict=False)
+    if declared != project:
+        raise InstallConflict(
+            f"Manifest project_root {declared} does not match caller's project_root {project}"
+        )
     changes: list[tuple[Path, bytes | None]] = []; skills: list[Path] = []
     for artifact in manifest.artifacts:
         path = Path(artifact.path); validate_target(path, project)

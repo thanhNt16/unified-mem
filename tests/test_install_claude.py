@@ -48,12 +48,15 @@ def test_apply_exact_expected_and_manifest_ownership(tmp_path):
     manifest = apply_plan(planned)
     mcp = json.loads((home / ".claude.json").read_text())
     assert mcp["mcpServers"]["kg"] == {
-        "command": "uv",
-        "args": ["run", "kg", "mcp", "serve", "--project-root", str(project.resolve())],
+        "command": "kg",
+        "args": ["mcp", "serve", "--project-root", str(project.resolve())],
     }
     hook = json.loads((home / ".claude/settings.json").read_text())["hooks"]["SessionEnd"][0]
     assert hook["matcher"] == "*"
     assert hook["hooks"][0]["type"] == "command"
+    assert hook["hooks"][0]["command"] == (
+        f"kg hook session-end --project-root {project.resolve()}"
+    )
     assert "sh -c" not in hook["hooks"][0]["command"]
     assert STANZA == (project / "CLAUDE.md").read_bytes()
     for name in ("kg-extract", "kg-query", "kg-dream"):
@@ -143,6 +146,65 @@ def test_skill_conflict_requires_force_and_backup(tmp_path):
     assert artifact.backup_path and Path(artifact.backup_path, "SKILL.md").read_text() == "user"
 
 
+def test_force_skill_replace_failure_restores_user_directory(tmp_path, monkeypatch):
+    home, project, skills = roots(tmp_path)
+    target = home / ".claude/skills/kg/kg-query"
+    target.mkdir(parents=True)
+    (target / "SKILL.md").write_text("user")
+    (target / "nested").mkdir()
+    (target / "nested/data.bin").write_bytes(b"\x00user\xff")
+    before = {
+        path.relative_to(target): path.read_bytes()
+        for path in target.rglob("*")
+        if path.is_file()
+    }
+    planned = plan_claude_install(project, home, skills_src=skills, force=True)
+
+    import kg.install.claude as module
+    real_replace = module.os.replace
+    calls = 0
+
+    def fail_second(source, destination):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("replace failed")
+        real_replace(source, destination)
+
+    monkeypatch.setattr(module.os, "replace", fail_second)
+    with pytest.raises(OSError, match="replace failed"):
+        apply_plan(planned)
+
+    after = {
+        path.relative_to(target): path.read_bytes()
+        for path in target.rglob("*")
+        if path.is_file()
+    }
+    assert after == before
+
+
+def test_force_skill_post_copy_failure_restores_user_directory(tmp_path, monkeypatch):
+    home, project, skills = roots(tmp_path)
+    target = home / ".claude/skills/kg/kg-query"
+    target.mkdir(parents=True)
+    (target / "SKILL.md").write_text("user")
+    planned = plan_claude_install(project, home, skills_src=skills, force=True)
+
+    import kg.install.claude as module
+    real_hash = module._tree_hash
+
+    def fail_installed_hash(path):
+        if path == target and (target / "SKILL.md").read_text() != "user":
+            raise OSError("post-copy failed")
+        return real_hash(path)
+
+    monkeypatch.setattr(module, "_tree_hash", fail_installed_hash)
+    with pytest.raises(OSError, match="post-copy failed"):
+        apply_plan(planned)
+
+    assert (target / "SKILL.md").read_text() == "user"
+
+
 def test_symlink_escape_refuses(tmp_path):
     home, project, skills = roots(tmp_path)
     outside = tmp_path / "outside"
@@ -150,6 +212,17 @@ def test_symlink_escape_refuses(tmp_path):
     (home / ".claude").symlink_to(outside, target_is_directory=True)
     with pytest.raises(InstallConflict, match="escapes allowed root"):
         plan_claude_install(project, home, skills_src=skills)
+
+
+def test_backup_path_symlink_escape_refused_at_apply(tmp_path):
+    home, project, planned = plan(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (project / ".kg-install-backups").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises((InstallConflict, ValueError), match="Symlink|escapes"):
+        apply_plan(planned)
+    assert not list(outside.iterdir())
 
 
 def test_atomic_failure_rolls_back(tmp_path, monkeypatch):
@@ -186,7 +259,7 @@ def test_uninstall_restores_exact_and_preserves_user_additions(tmp_path):
     settings = json.loads((home / ".claude/settings.json").read_text()); settings["after"] = True
     (home / ".claude/settings.json").write_text(json.dumps(settings))
     (project / "CLAUDE.md").write_text((project / "CLAUDE.md").read_text() + "after\n")
-    uninstall(manifest)
+    uninstall(manifest, project)
     got_mcp = json.loads((home / ".claude.json").read_text())
     got_settings = json.loads((home / ".claude/settings.json").read_text())
     assert got_mcp == {**original_mcp, "after": True}
@@ -202,7 +275,7 @@ def test_drift_refusal_preserves_everything(tmp_path):
     skill.write_text("edited")
     mcp_before = (home / ".claude.json").read_bytes()
     with pytest.raises(InstallConflict, match="drift"):
-        uninstall(manifest)
+        uninstall(manifest, project)
     assert skill.read_text() == "edited"
     assert (home / ".claude.json").read_bytes() == mcp_before
 
@@ -217,7 +290,7 @@ def test_modes_preserved(tmp_path):
     assert stat.S_IMODE(mcp.stat().st_mode) == 0o600
     assert stat.S_IMODE(settings.stat().st_mode) == 0o640
     assert stat.S_IMODE(instructions.stat().st_mode) == 0o664
-    uninstall(manifest)
+    uninstall(manifest, project)
     assert stat.S_IMODE(mcp.stat().st_mode) == 0o600
     assert stat.S_IMODE(settings.stat().st_mode) == 0o640
     assert stat.S_IMODE(instructions.stat().st_mode) == 0o664
