@@ -28,12 +28,10 @@ class Resolver:
         adapter: StorageAdapter,
         embedder: Embedder,
         thresholds,
-        user_id: str,
     ):
         self.adapter = adapter
         self.embedder = embedder
         self.t = thresholds
-        self.user_id = user_id
 
     def _candidates(self, type_: str) -> list[Node]:
         rows = self.adapter.conn.execute(

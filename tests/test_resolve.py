@@ -17,7 +17,7 @@ def _setup(tmp_path):
             aliases=["D. Hassabis"],
         ),
     ])
-    return adapter, Resolver(adapter, FakeEmbedder(), cfg.thresholds, user_id="u")
+    return adapter, Resolver(adapter, FakeEmbedder(), cfg.thresholds)
 
 
 def test_exact_alias(tmp_path):
@@ -64,7 +64,7 @@ def test_semantic_resolution_uses_normalized_cosine(tmp_path):
         Node(id="u:person:candidate", type="person", name="candidate"),
     ])
     resolver = Resolver(
-        adapter, _NonNormalizedEmbedder(), Config.default().thresholds, user_id="u"
+        adapter, _NonNormalizedEmbedder(), Config.default().thresholds
     )
     result = resolver.resolve("query", "person")
     assert result.matched_id is None

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Optional
 
 import typer
 
@@ -18,7 +19,7 @@ def _build_gate(paths: KgPaths, cfg: Config) -> Gate:
     adapter = SQLiteAdapter(paths.kg_db)
     emb = make_embedder(cfg)
     return Gate(
-        adapter, Resolver(adapter, emb, cfg.thresholds, cfg.project.user_id),
+        adapter, Resolver(adapter, emb, cfg.thresholds),
         Deduper(adapter, emb, cfg.thresholds), emb, cfg, cfg.project.user_id,
     )
 
@@ -27,11 +28,17 @@ def save_cli(
     nodes: Path = typer.Option(..., "--nodes"),
     edges: Path = typer.Option(..., "--edges"),
     source: str = typer.Option(..., "--source"),
+    facts: Optional[Path] = typer.Option(None, "--facts"),
+    preferences: Optional[Path] = typer.Option(None, "--preferences"),
 ) -> None:
     paths = KgPaths.for_cwd()
     cfg = Config.from_path(paths.config)
     report = _build_gate(paths, cfg).normalize(
-        json.loads(nodes.read_text()), json.loads(edges.read_text()), source,
+        json.loads(nodes.read_text()),
+        json.loads(edges.read_text()),
+        source,
+        facts=json.loads(facts.read_text()) if facts else None,
+        preferences=json.loads(preferences.read_text()) if preferences else None,
     )
     for d in report.decisions:
         typer.echo(
@@ -39,3 +46,4 @@ def save_cli(
             f"({d.score:.2f} via {d.via})"
         )
     typer.echo(f"edges: {report.edges_upserted}  new same_as: {report.new_same_as}")
+    typer.echo(f"dropped edges: {len(report.dropped_edges)}")

@@ -22,7 +22,7 @@ def resolve_cli(
     type_: str = typer.Option(..., "--type"),
 ) -> None:
     ad, emb, cfg = _load()
-    res = Resolver(ad, emb, cfg.thresholds, cfg.project.user_id).resolve(name, type_)
+    res = Resolver(ad, emb, cfg.thresholds).resolve(name, type_)
     typer.echo(f"{res.via}  {res.matched_id}  ({res.score:.2f})  canonical={res.canonical_name}")
 
 
