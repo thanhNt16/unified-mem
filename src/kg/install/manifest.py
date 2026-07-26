@@ -268,12 +268,18 @@ def atomic_write(path: Path, data: bytes) -> None:
             dir=str(parent), prefix=".tmp-", suffix=Path(path).name
         )
         os.write(fd, data)
+        os.fchmod(fd, existing_mode)
         os.fsync(fd)
         os.close(fd)
         fd = -1
         os.replace(tmp, path)
-        os.chmod(path, existing_mode)
         tmp = None
+        # Persist the directory entry rename, not only the file contents.
+        dir_fd = os.open(parent, os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
     finally:
         if fd >= 0:
             try:
