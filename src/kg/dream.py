@@ -61,17 +61,18 @@ def dream_candidates(
     out: list[Candidate] = []
     since_ts = _resolve_since(since)
 
-    # --- RECENT-PAIR: same-type active nodes ingested since `since` ---
+    # All sweeps deliberately query active nodes only.
     rows = adapter.conn.execute(
         "SELECT data FROM nodes WHERE status='active'"
     ).fetchall()
-    nodes = [Node.model_validate_json(r["data"]) for r in rows]
-
+    nodes = sorted((Node.model_validate_json(r["data"]) for r in rows), key=lambda n: n.id or "")
+    recent_nodes = nodes
     if since_ts:
-        nodes = [n for n in nodes if _node_recent(n, since_ts)]
+        recent_nodes = [n for n in nodes if _node_recent(n, since_ts)]
 
+    # --- RECENT-PAIR: same-type active nodes ingested since `since` ---
     by_type: dict[str, list[Node]] = {}
-    for n in nodes:
+    for n in recent_nodes:
         by_type.setdefault(n.type, []).append(n)
     for type_, group in by_type.items():
         for a, b in itertools.combinations(group, 2):
@@ -102,5 +103,31 @@ def dream_candidates(
             score=e.confidence,
             detail="gray-zone same_as",
         ))
+
+    # --- EXPIRING: active facts/preferences whose validity already ended ---
+    now = datetime.now(timezone.utc)
+    for n in nodes:
+        valid_until = _parse_ts(n.valid_until)
+        if n.type in {"fact", "preference"} and valid_until and valid_until < now:
+            out.append(Candidate(
+                reason="expiring",
+                node_ids=[n.id],
+                detail=f"valid_until {n.valid_until}",
+            ))
+
+    # --- ORPHAN: narrow, supported definition — no recorded sources ---
+    for n in nodes:
+        if not n.sources:
+            out.append(Candidate(reason="orphan", node_ids=[n.id], detail="orphan"))
+
+    # --- CONTRADICT: same fact subject/predicate (name), different object (summary) ---
+    facts = [n for n in nodes if n.type == "fact"]
+    for a, b in itertools.combinations(facts, 2):
+        if a.name == b.name and (a.summary or "") != (b.summary or ""):
+            out.append(Candidate(
+                reason="contradict",
+                node_ids=[a.id, b.id],
+                detail=f"name={a.name}",
+            ))
 
     return out

@@ -118,3 +118,113 @@ def test_recent_pair_excludes_both_timestamps_old(tmp_path):
     rp = [c for c in dream_candidates(a, since="2026-07-25")
           if c.reason == "recent-pair"]
     assert len(rp) == 0
+
+
+# --- Task 2: EXPIRING / ORPHAN / CONTRADICT ---------------------------------
+
+def test_expiring_listed(tmp_path):
+    """Active node with valid_until in the past surface as EXPIRING."""
+    a = SQLiteAdapter(tmp_path / "kg.db")
+    a.upsert_nodes([Node(id="u:preference:old", type="preference", name="likes-x",
+                         valid_until="2020-01-01T00:00:00Z")])
+    cands = dream_candidates(a, since=None)
+    exp = [c for c in cands if c.reason == "expiring"]
+    assert len(exp) == 1
+    assert exp[0].node_ids == ["u:preference:old"]
+    assert "2020-01-01T00:00:00Z" in exp[0].detail
+
+
+def test_expiring_skips_future_valid_until(tmp_path):
+    """valid_until in the future is NOT expiring."""
+    a = SQLiteAdapter(tmp_path / "kg.db")
+    a.upsert_nodes([Node(id="u:preference:future", type="preference", name="likes-y",
+                         valid_until="9999-01-01T00:00:00Z")])
+    cands = dream_candidates(a, since=None)
+    assert not [c for c in cands if c.reason == "expiring"]
+
+
+def test_expiring_skips_tombstoned(tmp_path):
+    """Tombstoned nodes are excluded from every worklist sweep."""
+    a = SQLiteAdapter(tmp_path / "kg.db")
+    a.upsert_nodes([Node(id="u:preference:dead", type="preference", name="likes-z",
+                         valid_until="2020-01-01T00:00:00Z")])
+    a.delete("u:preference:dead")
+    cands = dream_candidates(a, since=None)
+    assert not [c for c in cands if c.reason == "expiring"]
+
+
+def test_orphan_listed_when_no_sources(tmp_path):
+    """Active node with empty sources is an ORPHAN candidate."""
+    a = SQLiteAdapter(tmp_path / "kg.db")
+    a.upsert_nodes([Node(id="u:fact:f1", type="fact", name="X is Y", sources=[])])
+    cands = dream_candidates(a, since=None)
+    orphans = [c for c in cands if c.reason == "orphan"]
+    assert len(orphans) == 1
+    assert orphans[0].node_ids == ["u:fact:f1"]
+    assert orphans[0].detail == "orphan"
+
+
+def test_orphan_not_flagged_when_sources_present(tmp_path):
+    """NARROW ORPHAN rule: nonempty sources ⇒ NOT flagged."""
+    a = SQLiteAdapter(tmp_path / "kg.db")
+    a.upsert_nodes([Node(id="u:fact:f2", type="fact", name="X is Z",
+                         sources=[{"doc": "raw/notes.md"}])])
+    cands = dream_candidates(a, since=None)
+    assert not [c for c in cands if c.reason == "orphan"]
+
+
+def test_contradict_pair_same_name_diff_summary(tmp_path):
+    """Two active facts sharing name with differing summary ⇒ CONTRADICT."""
+    a = SQLiteAdapter(tmp_path / "kg.db")
+    a.upsert_nodes([
+        Node(id="u:fact:a", type="fact", name="sky color", summary="blue"),
+        Node(id="u:fact:b", type="fact", name="sky color", summary="green"),
+    ])
+    cands = dream_candidates(a, since=None)
+    contra = [c for c in cands if c.reason == "contradict"]
+    assert len(contra) == 1
+    assert set(contra[0].node_ids) == {"u:fact:a", "u:fact:b"}
+
+
+def test_contradict_skips_identical_summary(tmp_path):
+    """Same name AND same summary ⇒ no contradiction."""
+    a = SQLiteAdapter(tmp_path / "kg.db")
+    a.upsert_nodes([
+        Node(id="u:fact:a", type="fact", name="sky color", summary="blue"),
+        Node(id="u:fact:b", type="fact", name="sky color", summary="blue"),
+    ])
+    cands = dream_candidates(a, since=None)
+    assert not [c for c in cands if c.reason == "contradict"]
+
+
+def test_contradict_skips_different_type(tmp_path):
+    """Only facts of the same type contribute to CONTRADICT sweep."""
+    a = SQLiteAdapter(tmp_path / "kg.db")
+    a.upsert_nodes([
+        Node(id="u:fact:a", type="fact", name="sky color", summary="blue"),
+        Node(id="u:preference:b", type="preference", name="sky color",
+             summary="green"),
+    ])
+    cands = dream_candidates(a, since=None)
+    assert not [c for c in cands if c.reason == "contradict"]
+
+
+def test_contradict_no_duplicate_pairs_and_stable_order(tmp_path):
+    """Pair appears at most once; ordering is deterministic (sorted by id)."""
+    a = SQLiteAdapter(tmp_path / "kg.db")
+    a.upsert_nodes([
+        Node(id="u:fact:c", type="fact", name="temp", summary="hot"),
+        Node(id="u:fact:a", type="fact", name="temp", summary="cold"),
+        Node(id="u:fact:b", type="fact", name="temp", summary="warm"),
+    ])
+    cands = dream_candidates(a, since=None)
+    contra = [c for c in cands if c.reason == "contradict"]
+    # 3 choose 2 = 3 unique pairs; no dupes
+    pair_sets = {frozenset(c.node_ids) for c in contra}
+    assert len(pair_sets) == len(contra) == 3
+    # Deterministic ordering: each pair sorted, and list sorted by pair tuple
+    for c in contra:
+        assert c.node_ids == sorted(c.node_ids)
+    assert [tuple(c.node_ids) for c in contra] == sorted(
+        tuple(c.node_ids) for c in contra
+    )
