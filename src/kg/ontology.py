@@ -30,10 +30,15 @@ class Node(BaseModel):
     aliases: list[str] = Field(default_factory=list)
     summary: str | None = None
     attributes: dict = Field(default_factory=dict)
+    attribute_conflicts: list[dict] = Field(default_factory=list)
+    embedding: list[float] | None = None
     valid_from: str | None = None
     valid_until: str | None = None
     sources: list[dict] = Field(default_factory=list)
+    created_at: str | None = None
+    updated_at: str | None = None
     status: str = "active"
+    merged_into: str | None = None
 
 
 class Edge(BaseModel):
@@ -45,6 +50,7 @@ class Edge(BaseModel):
     sources: list[dict] = Field(default_factory=list)
     valid_from: str | None = None
     valid_until: str | None = None
+    status: str = "active"
 
 
 def build_ontology_schema() -> dict:

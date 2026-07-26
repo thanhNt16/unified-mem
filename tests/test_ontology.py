@@ -41,3 +41,27 @@ def test_build_schema_includes_node_model():
     schema = build_ontology_schema()
     assert "Node" in schema["$defs"]
     assert "Edge" in schema["$defs"]
+
+
+from kg.ontology import Node, Edge
+
+
+def test_node_has_graph_fields():
+    n = Node(type="person", name="Demis Hassabis")
+    assert n.embedding is None
+    assert n.merged_into is None
+    assert n.attribute_conflicts == []
+    assert n.created_at is None
+    assert n.status == "active"
+
+
+def test_edge_has_status():
+    e = Edge(semantic_type="employed_by")
+    assert e.status == "active"
+
+
+def test_node_roundtrips_with_embedding():
+    n = Node(type="object", name="X", embedding=[0.1, 0.2, 0.3])
+    dumped = n.model_dump()
+    assert dumped["embedding"] == [0.1, 0.2, 0.3]
+    assert Node.model_validate(dumped).embedding == [0.1, 0.2, 0.3]
