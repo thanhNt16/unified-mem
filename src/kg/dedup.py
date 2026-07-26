@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from rapidfuzz import fuzz
 
-from kg.embed import Embedder
+from kg.embed import Embedder, cosine_similarity
 from kg.ontology import Node
 from kg.storage.base import StorageAdapter
 
@@ -87,8 +87,8 @@ class Deduper:
             if not existing or existing.id == node.id:
                 continue
             etext = full_context_text(existing, ef)
-            cos = sum(
-                a * b for a, b in zip(qemb, self.embedder.embed(etext))
+            cos = cosine_similarity(
+                qemb, self.embedder.embed(etext)
             )
             fz = fuzz.token_set_ratio(qtext, etext) / 100.0
             score = (

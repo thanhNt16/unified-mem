@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from rapidfuzz import fuzz
 
-from kg.embed import Embedder
+from kg.embed import Embedder, cosine_similarity
 from kg.ontology import Node
 from kg.storage.base import StorageAdapter
 
@@ -59,13 +59,10 @@ class Resolver:
         # 2. fuzzy
         best_id, best_score = None, 0.0
         for n in cands:
-            sc = max(
+            sc = max([
                 fuzz.token_set_ratio(target, _norm(n.name)) / 100.0,
-                *(
-                    fuzz.token_set_ratio(target, _norm(a)) / 100.0
-                    for a in n.aliases
-                ),
-            )
+                *(fuzz.token_set_ratio(target, _norm(a)) / 100.0 for a in n.aliases),
+            ])
             if sc > best_score:
                 best_id, best_score = n.id, sc
         if best_id and best_score >= self.t.resolve_fuzzy:
@@ -79,7 +76,7 @@ class Resolver:
         best_id, best_score = None, 0.0
         for n in cands:
             nv = self.embedder.embed(n.name)
-            cos = sum(a * b for a, b in zip(qv, nv))
+            cos = cosine_similarity(qv, nv)
             if cos > best_score:
                 best_id, best_score = n.id, cos
         if best_id and best_score >= self.t.resolve_semantic:

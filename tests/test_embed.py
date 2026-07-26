@@ -32,3 +32,10 @@ def test_make_embedder_local_returns_embedder():
     cfg = Config.default()
     e = make_embedder(cfg)
     assert e.dim() == 384
+
+
+def test_cosine_similarity_normalizes_and_handles_zero():
+    from kg.embed import cosine_similarity
+
+    assert cosine_similarity([2.0, 0.0], [1.0, 0.0]) == 1.0
+    assert cosine_similarity([0.0], [1.0]) == 0.0

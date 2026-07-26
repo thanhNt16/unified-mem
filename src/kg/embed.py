@@ -10,6 +10,13 @@ def content_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def cosine_similarity(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    a_norm = sum(x * x for x in a) ** 0.5
+    b_norm = sum(y * y for y in b) ** 0.5
+    return dot / (a_norm * b_norm) if a_norm and b_norm else 0.0
+
+
 class Embedder(ABC):
     @abstractmethod
     def embed(self, text: str) -> list[float]: ...

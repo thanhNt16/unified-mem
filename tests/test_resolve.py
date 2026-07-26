@@ -45,3 +45,27 @@ def test_type_gated(tmp_path):
     _, resolver = _setup(tmp_path)
     result = resolver.resolve("Demis Hassabis", "organization")
     assert result.matched_id is None
+
+
+class _NonNormalizedEmbedder:
+    def embed(self, text):
+        return {"query": [100.0, 0.0], "candidate": [0.1, 1.0]}[text]
+
+    def embed_many(self, texts):
+        return [self.embed(text) for text in texts]
+
+    def dim(self):
+        return 2
+
+
+def test_semantic_resolution_uses_normalized_cosine(tmp_path):
+    adapter = SQLiteAdapter(tmp_path / "kg.db")
+    adapter.upsert_nodes([
+        Node(id="u:person:candidate", type="person", name="candidate"),
+    ])
+    resolver = Resolver(
+        adapter, _NonNormalizedEmbedder(), Config.default().thresholds, user_id="u"
+    )
+    result = resolver.resolve("query", "person")
+    assert result.matched_id is None
+    assert result.via == "none"

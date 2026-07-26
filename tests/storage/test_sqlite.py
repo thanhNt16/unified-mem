@@ -107,3 +107,32 @@ def test_vec_search(tmp_path):
     a.upsert_nodes([n1, n2])
     hits = a.vec_search(base, k=2)
     assert hits[0][0] == "u:person:a"  # identical → highest cosine
+
+
+def test_vec_search_type_filter_overfetches_wrong_type_hits(tmp_path):
+    a = _adapter(tmp_path)
+    query = [1.0] + [0.0] * 383
+    wrong_types = [
+        Node(
+            id=f"u:organization:{i}",
+            type="organization",
+            name=f"Org {i}",
+            embedding=query,
+        )
+        for i in range(11)
+    ]
+    person = Node(
+        id="u:person:match",
+        type="person",
+        name="Match",
+        embedding=[0.9] + [0.0] * 383,
+    )
+    a.upsert_nodes([*wrong_types, person])
+
+    hits = a.vec_search(query, k=1, type_filter="person")
+
+    assert hits == [("u:person:match", hits[0][1])]
+
+
+# Note: existing-node re-embedding remains M1-simple; cache stored vectors when scale demands it.
+# Note: Resolver.user_id is retained for its public interface, unused by naming-only resolution.

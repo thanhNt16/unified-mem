@@ -184,11 +184,18 @@ class SQLiteAdapter(StorageAdapter):
         return [(r["id"], float(r["r"])) for r in rows]
 
     def vec_search(self, embedding, k=10, type_filter=None):
+        # vec0 KNN can't pre-filter by type, so when a type_filter is given
+        # we over-fetch (up to all active nodes) and filter/truncate in
+        # Python — otherwise k wrong-type hits could crowd out a valid
+        # same-type match ranked just past k.
+        fetch_k = k
+        if type_filter:
+            fetch_k = max(k, self.count()["nodes"])
         rows = self.conn.execute(
             "SELECT node_id, distance FROM nodes_vec "
             "WHERE embedding MATCH ? AND k = ? "
             "ORDER BY distance",
-            (sqlite_vec.serialize_float32(embedding), k),
+            (sqlite_vec.serialize_float32(embedding), fetch_k),
         ).fetchall()
         out = []
         for r in rows:
@@ -201,4 +208,4 @@ class SQLiteAdapter(StorageAdapter):
             out.append((r["node_id"], score))
         # Ensure ordering: highest score (lowest distance) first.
         out.sort(key=lambda t: t[1], reverse=True)
-        return out
+        return out[:k]
