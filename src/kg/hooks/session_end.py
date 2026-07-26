@@ -11,7 +11,14 @@ from typing import Any, BinaryIO, Iterator, Mapping
 from urllib.parse import urlparse
 
 from kg.config import Config
-from kg.conversation import Conversation, format_conversation, parse_conversation
+from kg.conversation import (
+    MAX_ENVELOPE_DEPTH,
+    MAX_ENVELOPE_RECORDS,
+    Conversation,
+    format_conversation,
+    identity_hash,
+    parse_conversation,
+)
 from kg.frontmatter import parse as parse_frontmatter
 from kg.paths import KgPaths
 from kg.raw_ops import add_source
@@ -58,6 +65,8 @@ def _records_from_payload(payload: Mapping[str, Any]) -> list[Mapping[str, Any]]
     for key in ("transcript", "messages", "records"):
         value = payload.get(key)
         if isinstance(value, list):
+            if len(value) > MAX_ENVELOPE_RECORDS:
+                raise HookInputError(f"transcript record count exceeds limit ({MAX_ENVELOPE_RECORDS})")
             return [record for record in value if isinstance(record, Mapping)]
     return None
 
@@ -65,20 +74,40 @@ def _records_from_payload(payload: Mapping[str, Any]) -> list[Mapping[str, Any]]
 def _allowed_session_root(
     payload: Mapping[str, Any], injected_root: Path | None,
 ) -> Path | None:
-    if injected_root is not None:
-        root = Path(injected_root)
-    else:
-        value = payload.get("session_root") or os.environ.get("KG_HOOK_SESSION_ROOT")
-        if not isinstance(value, str) or not value:
-            return None
-        root = Path(value)
+    """Resolve only an operator-provided root; payload values are assertions."""
+    trusted = injected_root or os.environ.get("KG_HOOK_SESSION_ROOT")
+    if trusted is None:
+        return None
     try:
-        resolved = root.resolve(strict=True)
-    except OSError as exc:
-        raise HookInputError("invalid session root") from exc
+        resolved = Path(trusted).expanduser().resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise HookInputError("invalid trusted session root") from exc
     if not resolved.is_dir():
-        raise HookInputError("invalid session root")
+        raise HookInputError("invalid trusted session root")
+
+    declared = payload.get("session_root")
+    if declared is not None:
+        if not isinstance(declared, str) or not declared:
+            raise HookInputError("invalid payload session root")
+        try:
+            payload_root = Path(declared).expanduser().resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise HookInputError("invalid payload session root") from exc
+        if payload_root != resolved:
+            raise HookInputError("payload session root does not match trusted root")
     return resolved
+
+
+def _payload_belongs_to_project(payload: Mapping[str, Any], project_root: Path) -> bool:
+    value = payload.get("cwd")
+    if not isinstance(value, str) or not value or len(value) > 4096:
+        return False
+    try:
+        cwd = Path(value).expanduser().resolve(strict=True)
+        cwd.relative_to(project_root)
+    except (OSError, RuntimeError, ValueError):
+        return False
+    return cwd.is_dir()
 
 
 def _safe_transcript_path(value: Any, root: Path) -> Path:
@@ -105,31 +134,51 @@ def _transcript_source(
     payload: Mapping[str, Any], *, session_root: Path | None,
 ) -> list[Mapping[str, Any]] | bytes:
     records = _records_from_payload(payload)
+    has_path_metadata = "session_root" in payload or "transcript_path" in payload
+    root = _allowed_session_root(payload, session_root) if has_path_metadata or records is None else None
+    path = None
+    if "transcript_path" in payload:
+        if root is None:
+            raise HookInputError("transcript path requires a trusted session root")
+        path = _safe_transcript_path(payload["transcript_path"], root)
     if records is not None:
         return records
-    value = payload.get("transcript_path")
-    root = _allowed_session_root(payload, session_root)
-    if root is None:
-        raise HookInputError("transcript records required; path reads need a session root")
-    path = _safe_transcript_path(value, root)
-    data = path.read_bytes()
+    if path is None:
+        raise HookInputError("transcript records required; path reads need a trusted session root")
+    try:
+        if path.stat().st_size > MAX_HOOK_INPUT_BYTES:
+            raise HookInputError("transcript exceeds size limit")
+        with path.open("rb") as handle:
+            data = handle.read(MAX_HOOK_INPUT_BYTES + 1)
+    except OSError as exc:
+        raise HookInputError("transcript unavailable") from exc
     if len(data) > MAX_HOOK_INPUT_BYTES:
         raise HookInputError("transcript exceeds size limit")
     return data
 
 
 def _flatten_record(record: Mapping[str, Any]) -> Mapping[str, Any] | None:
-    """Adapt Claude JSONL envelopes without serializing hidden/tool fields."""
+    """Adapt bounded Claude JSONL envelopes without exposing hidden/tool fields."""
     current: Any = record
-    for key in ("message", "event", "data"):
-        nested = current.get(key) if isinstance(current, Mapping) else None
-        if isinstance(nested, Mapping) and (
-            "role" in nested or "message" in nested or "content" in nested
-        ):
-            current = nested
-            if isinstance(current.get("message"), Mapping):
-                current = current["message"]
+    for depth in range(MAX_ENVELOPE_DEPTH + 1):
+        if not isinstance(current, Mapping):
+            return None
+        role = current.get("role")
+        if role in {"user", "assistant"}:
             break
+        nested = next(
+            (
+                current[key]
+                for key in ("message", "event", "data")
+                if isinstance(current.get(key), Mapping)
+            ),
+            None,
+        )
+        if nested is None:
+            break
+        if depth >= MAX_ENVELOPE_DEPTH:
+            raise HookInputError(f"transcript envelope exceeds depth limit ({MAX_ENVELOPE_DEPTH})")
+        current = nested
     if not isinstance(current, Mapping):
         return None
     role = current.get("role")
@@ -229,9 +278,10 @@ def _append_ingest(paths: KgPaths, record: Mapping[str, Any]) -> None:
         os.fsync(handle.fileno())
 
 
-def _repair_registry(paths: KgPaths, content_hash: str) -> str | None:
+def _repair_registry(paths: KgPaths, identity: str) -> str | None:
     registry = Registry(paths.registry)
-    marker = f"hash: {content_hash}"
+    harness, session_id, content_hash = identity.split(":", 2)
+    marker = f"identity: {identity_hash(harness, session_id, content_hash)}"
     for raw_path in paths.raw_conversations.glob("*.md"):
         try:
             text = raw_path.read_text(encoding="utf-8")
@@ -277,7 +327,7 @@ def ingest_payload(
                 (record.get("path") for record in reversed(records) if record.get("identity") == identity),
                 None,
             )
-        repaired = _repair_registry(paths, conversation.content_hash)
+        repaired = _repair_registry(paths, identity)
         if repaired:
             _append_ingest(paths, {
                 "identity": identity, "content_hash": conversation.content_hash,
@@ -312,7 +362,11 @@ def run(
     stderr = stderr or sys.stderr
     try:
         payload = parse_payload(_read_bounded(stdin))
-        created, path = ingest_payload(project_root, payload, session_root=session_root)
+        root = Path(project_root).expanduser().resolve(strict=True)
+        if not _payload_belongs_to_project(payload, root):
+            print("kg hook: session outside installed project; skipped", file=stderr)
+            return 0
+        created, path = ingest_payload(root, payload, session_root=session_root)
         if path is None:
             print("kg hook: automatic conversation ingest disabled", file=stderr)
         elif created:

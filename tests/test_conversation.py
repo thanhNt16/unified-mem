@@ -139,6 +139,29 @@ def test_secret_redaction_env_line():
     assert "sk-abc123" not in conv.messages[0].content
 
 
+@pytest.mark.parametrize("secret", [
+    '"auth_token":"sk-live-quoted-secret"',
+    "sk-ant-api03-standalone-secret",
+    "Authorization: Basic dXNlcjpwYXNzd29yZA==",
+    "AKIAIOSFODNN7EXAMPLE",
+    "ghp_abcdefghijklmnopqrstuvwxyz1234567890",
+    "gho_abcdefghijklmnopqrstuvwxyz1234567890",
+    "xoxb-123456789012-123456789012-abcdefghijklmnopqrstuvwx",
+])
+def test_secret_redaction_common_token_formats(secret):
+    conv = cv.parse_conversation([{"role": "user", "content": f'before {secret} after'}])
+    assert secret not in conv.messages[0].content
+    assert cv._REDACTION_MARKER in conv.messages[0].content
+
+
+def test_secret_redaction_crosses_json_quote_boundary():
+    conv = cv.parse_conversation([
+        {"role": "user", "content": '{"auth_token":"sk-live-secret","safe":"kept"}'},
+    ])
+    assert "sk-live-secret" not in conv.messages[0].content
+    assert '"safe":"kept"' in conv.messages[0].content
+
+
 def test_custom_redaction_patterns():
     import re
     custom = (re.compile(r"PROJECT-\d+"),)

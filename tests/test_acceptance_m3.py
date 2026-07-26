@@ -139,7 +139,7 @@ def test_m3_install_mcp_hook_uninstall_roundtrip(tmp_path, monkeypatch):
     cfg = Config.from_path(project / ".kg" / "config.toml")
     cfg.dream.auto_hook = True
     (project / ".kg" / "config.toml").write_text(cfg.render_toml(), encoding="utf-8")
-    payload = _payload()
+    payload = {**_payload(), "cwd": str(project)}
     hook = subprocess.run(
         [sys.executable, "-m", "kg", "hook", "session-end", "--project-root", str(project)],
         input=json.dumps(payload), capture_output=True, text=True, env={**os.environ, "HOME": str(home)},

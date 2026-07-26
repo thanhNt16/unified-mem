@@ -11,12 +11,30 @@ from typing import Any, Iterable, Mapping, Pattern
 DEFAULT_MAX_INPUT_BYTES = 2_000_000
 DEFAULT_MAX_MESSAGES = 1_000
 DEFAULT_MAX_CONTENT_CHARS = 32_000
+MAX_ENVELOPE_DEPTH = 10
+MAX_ENVELOPE_RECORDS = 10_000
 _REDACTION_MARKER = "[REDACTED]"
 DEFAULT_SECRET_PATTERNS: tuple[Pattern[str], ...] = (
+    # Authorization: Bearer / Proxy-Authorization: Bearer
     re.compile(r"(?i)\b(?:authorization|proxy-authorization)\s*:\s*bearer\s+[^\s,;]+"),
     re.compile(r"(?i)\bbearer\s+[a-z0-9._~+/-]{8,}"),
+    # Authorization: Basic <credentials>
+    re.compile(r"(?i)\b(?:authorization|proxy-authorization)\s*:\s*basic\s+[^\s,;]+"),
+    # header/shell-style key=value assignments
     re.compile(r"(?i)\b(?:api[_ -]?key|token|secret|password|cookie|set-cookie)\s*[:=]\s*[^\s,;]+"),
+    # JSON-quoted secret values: "auth_token":"sk-..." (value side only)
+    re.compile(
+        r"(?i)(\"(?:api[_ -]?key|auth[_ -]?token|token|secret|password|cookie)\"\s*:\s*\")"
+        r"[^\"]{4,}(\")"
+    ),
+    # Standalone Anthropic / GitHub / Slack / AWS tokens without prefix
+    re.compile(r"sk-ant-[a-z0-9._-]{8,}"),
+    re.compile(r"gh[opus]_[A-Za-z0-9]{20,}"),
+    re.compile(r"xox[bpoa]-[0-9a-zA-Z-]{10,}"),
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+    # PEM private key blocks
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"),
+    # ENV-style assignments
     re.compile(r"(?im)^\s*(?:export\s+)?[A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|COOKIE)\s*=\s*.+$"),
 )
 
@@ -57,7 +75,11 @@ def parse_conversation(source: str | bytes | Iterable[Mapping[str, Any]], *, max
     records, malformed = _records(source, max_input_bytes)
     messages: list[ConversationMessage] = []
     skipped = redacted = truncated = 0
+    seen = 0
     for record in records:
+        seen += 1
+        if seen > MAX_ENVELOPE_RECORDS:
+            raise ValueError(f"conversation record count exceeds limit ({MAX_ENVELOPE_RECORDS})")
         if len(messages) >= max_messages:
             skipped += 1
             continue
@@ -96,7 +118,8 @@ def canonical_body(messages: Iterable[ConversationMessage | Mapping[str, Any]]) 
 
 def format_conversation(messages: list[dict[str, Any]] | Conversation, session_id: str, harness: str, *, title: str = "") -> str:
     conversation = messages if isinstance(messages, Conversation) else parse_conversation(messages)
-    header = " | ".join(part for part in (f"session: {_safe(session_id)}", f"harness: {_safe(harness)}", f"title: {_safe(title)}" if title else "", f"hash: {conversation.content_hash}", f"metadata: {json.dumps(asdict(conversation.metadata), sort_keys=True, separators=(',', ':'))}") if part)
+    identity = identity_hash(harness, session_id, conversation.content_hash)
+    header = " | ".join(part for part in (f"session: {_safe(session_id)}", f"harness: {_safe(harness)}", f"title: {_safe(title)}" if title else "", f"hash: {conversation.content_hash}", f"identity: {identity}", f"metadata: {json.dumps(asdict(conversation.metadata), sort_keys=True, separators=(',', ':'))}") if part)
     lines = [f"<!-- {header} -->", ""]
     for message in conversation.messages:
         lines.extend((f"### **{message.role}**", "", *[f"    {line}" for line in message.content.splitlines()], ""))
@@ -132,6 +155,10 @@ def _text(value: Any) -> str | None:
 
 def _normalize(text: str) -> str:
     return "\n".join(line.rstrip() for line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n")).strip()
+
+
+def identity_hash(harness: str, session_id: str, content_hash: str) -> str:
+    return sha256(f"{harness}:{session_id}:{content_hash}".encode()).hexdigest()
 
 
 def _safe(value: object) -> str:
