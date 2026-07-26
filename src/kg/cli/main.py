@@ -26,12 +26,14 @@ def _root(
 
 
 from kg.cli import init as init_cmd  # noqa: E402
+from kg.cli import install_cli  # noqa: E402
 from kg.cli import raw as raw_cmd  # noqa: E402
 from kg.cli import status as status_cmd  # noqa: E402
 from kg.cli import config_cmd  # noqa: E402
 from kg.cli import wiki_cli  # noqa: E402
 
 app.command(name="init")(init_cmd.init_cli)
+app.command(name="install")(install_cli.install)
 app.add_typer(raw_cmd.raw_app, name="raw")
 app.command(name="status")(status_cmd.status_cli)
 config_app = typer.Typer(help="Read kg config.")
