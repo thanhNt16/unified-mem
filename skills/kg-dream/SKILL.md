@@ -80,7 +80,7 @@ The review is complete when the harness says so, not when the queue empties. Tru
    kg wiki sync
    kg snapshot
    ```
-   - `kg wiki sync` regenerates affected entity pages (`wiki/entities/<slug>.md`) and appends a structured JSONL line per merge/confirm/reject to `wiki/log.md`.
+   - `kg wiki sync` regenerates affected entity pages (`wiki/entities/<slug>.md`).
    - `kg snapshot` writes a WAL-safe zstd artifact under `.kg/snapshots/` for recoverability.
 
    Skip both if every verdict was `keep` / `escalate`.

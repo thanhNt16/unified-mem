@@ -7,8 +7,9 @@ import json
 import os
 import re
 import tempfile
+import unicodedata
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import quote, urlsplit
 
@@ -40,17 +41,24 @@ def _entity_filename(node: Node) -> str:
 def _text(value: Any) -> str:
     """Render untrusted text as one inert Markdown line."""
     value = " ".join(str(value or "").split())
+    value = "".join(ch for ch in value if not unicodedata.category(ch).startswith("C"))
     return _MARKDOWN.sub(r"\\\1", html.escape(value, quote=False)) or "—"
 
 
 def _safe_raw_path(value: Any) -> str | None:
-    """Accept only relative raw/... paths without traversal or URL syntax."""
-    if not isinstance(value, str) or not value or urlsplit(value).scheme:
+    """Accept only relative raw/... paths without traversal, controls, or URL syntax."""
+    if (
+        not isinstance(value, str)
+        or not value
+        or urlsplit(value).scheme
+        or any(unicodedata.category(char).startswith("C") for char in value)
+    ):
         return None
-    path = Path(value)
+    safe = value.replace("\\", "/")
+    path = PurePosixPath(safe)
     if path.is_absolute() or ".." in path.parts or not path.parts or path.parts[0] != "raw":
         return None
-    return value.replace("\\", "/")
+    return safe
 
 
 def _source(source: Any) -> str:
@@ -61,8 +69,8 @@ def _source(source: Any) -> str:
     suffix = f"#chunk-{_text(chunk)}" if chunk is not None else ""
     safe = _safe_raw_path(doc)
     if safe:
-        href = "../../" + quote(safe, safe="/")
-        return f"[{html.escape(safe, quote=False)}]({href}){suffix}"
+        href = "../../" + "/".join(quote(segment, safe="") for segment in safe.split("/"))
+        return f"[{_text(safe)}]({href}){suffix}"
     return _text(doc) + suffix
 
 
@@ -153,9 +161,12 @@ def sync_wiki(adapter: SQLiteAdapter, wiki_dir: Path) -> SyncReport:
         if target in active:
             incoming[target].append((edge, active.get(source)))
 
-    # Render everything before changing disk: rendering failures preserve prior state.
+    # Render and preflight before changing disk: conflicts preserve prior state.
     pages = {filenames[node.id or ""]: _render(node, outgoing[node.id or ""], incoming[node.id or ""], filenames)
              for node in nodes}
+    conflicts = sorted(filename for filename in pages if (entities / filename).exists() and filename not in old_files)
+    if conflicts:
+        raise FileExistsError(f"refusing to overwrite user wiki page(s): {', '.join(conflicts)}")
     for filename in sorted(pages):
         _atomic_write(entities / filename, pages[filename])
 

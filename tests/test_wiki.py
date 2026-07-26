@@ -101,6 +101,58 @@ def test_rerun_is_byte_identical(tmp_path):
     assert (entities / _entity_filename(node)).read_bytes() == first
 
 
+def test_first_sync_refuses_generated_filename_owned_by_user(tmp_path):
+    node = Node(id="u:person:alice", type="person", name="Alice")
+    paths, adapter = _seed(tmp_path, [node])
+    entities = paths.wiki / "entities"
+    entities.mkdir(parents=True, exist_ok=True)
+    page = entities / _entity_filename(node)
+    page.write_bytes(b"USER DATA")
+    manifest = entities / ".kg-generated.json"
+    manifest.write_bytes(b"[\"unrelated--00000000.md\"]\n")
+    before = {path.name: path.read_bytes() for path in entities.iterdir()}
+
+    with pytest.raises(FileExistsError, match="refusing to overwrite user wiki page"):
+        sync_wiki(adapter, paths.wiki)
+
+    assert {path.name: path.read_bytes() for path in entities.iterdir()} == before
+
+
+def test_manifest_owned_generated_file_is_overwritten(tmp_path):
+    node = Node(id="u:person:alice", type="person", name="Alice")
+    paths, adapter = _seed(tmp_path, [node])
+    entities = paths.wiki / "entities"
+    entities.mkdir(parents=True, exist_ok=True)
+    page = entities / _entity_filename(node)
+    page.write_text("OLD GENERATED DATA")
+    (entities / ".kg-generated.json").write_text(json.dumps([page.name]))
+
+    sync_wiki(adapter, paths.wiki)
+
+    assert page.read_text() != "OLD GENERATED DATA"
+    assert "# Alice" in page.read_text()
+
+
+def test_source_paths_escape_labels_and_encode_targets(tmp_path):
+    docs = [
+        "raw/x](javascript:alert(1))",
+        "raw/x\n# injected.md",
+        "raw/x\x00.md",
+        "raw/[brackets] (space)/東京.md",
+    ]
+    node = Node(id="u:person:sources", type="person", name="Sources",
+                sources=[{"doc": doc} for doc in docs])
+    paths, adapter = _seed(tmp_path, [node])
+    sync_wiki(adapter, paths.wiki)
+    page = (paths.wiki / "entities" / _entity_filename(node)).read_text()
+
+    assert "\n# injected.md" not in page
+    assert "javascript%3A" in page
+    assert "\x00" not in page
+    assert "../../raw/%5Bbrackets%5D%20%28space%29/%E6%9D%B1%E4%BA%AC.md" in page
+    assert "[raw/\\[brackets\\] (space)/東京\\.md]" in page
+
+
 def test_render_error_preserves_prior_pages_and_manifest(tmp_path, monkeypatch):
     node = Node(id="u:person:alice", type="person", name="Alice")
     paths, adapter = _seed(tmp_path, [node])
