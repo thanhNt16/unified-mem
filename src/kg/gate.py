@@ -41,32 +41,47 @@ class Gate:
         return datetime.now(timezone.utc).isoformat()
 
     def normalize(self, extracted_nodes, extracted_edges, source) -> SaveReport:
+        for en in extracted_nodes:
+            if en["type"] not in ALLOWED_NODE_TYPES:
+                raise ValueError(f"Unknown node type: {en['type']!r}")
+        for ee in extracted_edges:
+            if ee["semantic_type"] not in (
+                ALLOWED_SEMANTIC_EDGE_TYPES | STRUCTURAL_EDGE_TYPES
+            ):
+                raise ValueError(
+                    f"Unknown edge semantic_type: {ee['semantic_type']!r}")
+
         report = SaveReport()
         name_to_id: dict[str, str] = {}
-        seen_names: set[str] = set()
+        name_to_ids: dict[str, list[str]] = {}
+        seen_keys: set[tuple[str, str]] = set()
 
         for en in extracted_nodes:
             type_ = en["type"]
-            if type_ not in ALLOWED_NODE_TYPES:
-                raise ValueError(f"Unknown node type: {type_!r}")
             name = en["name"]
 
-            if name in seen_names:
+            key = (type_, name)
+            if key in seen_keys:
                 logger.warning(
-                    "Duplicate name %r in batch; skipping, first-write-wins", name)
+                    "Duplicate (type, name) %r in batch; skipping, first-write-wins", key)
                 continue
-            seen_names.add(name)
+            seen_keys.add(key)
 
             # 2. RESOLVE (naming only)
             res = self.resolver.resolve(name, type_)
             if res.matched_id:
                 node = self.adapter.get(res.matched_id)
-                if name not in node.aliases and name != node.name:
-                    node.aliases = [*node.aliases, name]
-                    node.sources = self._add_source(node.sources, source)
+                old_aliases, old_sources = list(node.aliases), list(node.sources)
+                node.aliases = list(dict.fromkeys([
+                    *node.aliases, *en.get("aliases", []),
+                    *([name] if name != node.name else []),
+                ]))
+                node.sources = self._add_source(node.sources, source)
+                if node.aliases != old_aliases or node.sources != old_sources:
                     node.updated_at = self._now()
                     self.adapter.upsert_nodes([node])
                 name_to_id[name] = res.matched_id
+                name_to_ids.setdefault(name, []).append(res.matched_id)
                 report.decisions.append(Decision(
                     name, type_, "RESOLVED", res.matched_id, res.score, res.via))
                 continue
@@ -92,9 +107,9 @@ class Gate:
                 # Persist candidate FIRST so merge can look it up
                 self.adapter.upsert_nodes([candidate])
                 self.merge(dd.best_match_id, candidate.id)
-                name_to_id[name] = dd.best_match_id
+                settled_id = dd.best_match_id
                 report.decisions.append(Decision(
-                    name, type_, "MERGED", dd.best_match_id, dd.score, "dedup"))
+                    name, type_, "MERGED", settled_id, dd.score, "dedup"))
             elif dd.best_match_id and dd.score >= self.config.thresholds.dedup_flag:
                 self.adapter.upsert_nodes([candidate])
                 self.adapter.upsert_edges([Edge(
@@ -104,29 +119,34 @@ class Gate:
                     confidence=dd.score,
                     status="pending",
                 )])
-                name_to_id[name] = candidate.id
+                settled_id = candidate.id
                 report.new_same_as += 1
                 report.decisions.append(Decision(
                     name, type_, "FLAGGED", dd.best_match_id, dd.score, "dedup"))
             else:
                 self.adapter.upsert_nodes([candidate])
-                name_to_id[name] = candidate.id
+                settled_id = candidate.id
                 report.decisions.append(Decision(
-                    name, type_, "NEW", candidate.id, dd.score, "new"))
+                    name, type_, "NEW", settled_id, dd.score, "new"))
+            name_to_id[name] = settled_id
+            name_to_ids.setdefault(name, []).append(settled_id)
 
-        # edges: map names to settled ids
+        # edges: resolve only unambiguous batch-local names
         edges_out = []
         for ee in extracted_edges:
             sem = ee["semantic_type"]
-            if sem not in (ALLOWED_SEMANTIC_EDGE_TYPES | STRUCTURAL_EDGE_TYPES):
-                raise ValueError(f"Unknown edge semantic_type: {sem!r}")
-            src = name_to_id.get(ee["source_name"])
-            tgt = name_to_id.get(ee["target_name"])
-            if not src or not tgt:
+            source_ids = name_to_ids.get(ee["source_name"], [])
+            target_ids = name_to_ids.get(ee["target_name"], [])
+            if len(source_ids) != 1 or len(target_ids) != 1:
+                logger.warning(
+                    "Ambiguous or missing edge endpoint(s) %r -> %r; skipping",
+                    ee["source_name"], ee["target_name"])
                 continue
+            src, tgt = source_ids[0], target_ids[0]
             edges_out.append(Edge(
                 id=edge_id(src, sem, tgt), semantic_type=sem,
                 summary=ee.get("summary"),
+                confidence=ee.get("confidence", 0.0),
                 sources=[{"doc": source.split("#")[0]}]))
         if edges_out:
             self.adapter.upsert_edges(edges_out)

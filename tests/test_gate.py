@@ -189,3 +189,96 @@ def test_duplicate_name_in_batch_first_write_wins(tmp_path):
     node = a.get(node_id("u", "person", "Dup"))
     assert node.summary == "first"
     assert len(rep.decisions) == 1
+
+
+# --- Cross-type same-name collision (defect 2) ---
+def test_cross_type_same_name_both_persist(tmp_path):
+    a, g, cfg = _gate(tmp_path)
+    rep = g.normalize(
+        [{"type": "person", "name": "Paris", "summary": "a person"},
+         {"type": "location", "name": "Paris", "summary": "a city"}],
+        [], "raw/x.md#chunk-0",
+    )
+    assert a.count()["nodes"] == 2
+    assert len(rep.decisions) == 2
+    person = a.get(node_id("u", "person", "Paris"))
+    location = a.get(node_id("u", "location", "Paris"))
+    assert person is not None and location is not None
+    assert person.id != location.id
+
+
+def test_ambiguous_edge_endpoint_skipped(tmp_path):
+    a, g, cfg = _gate(tmp_path)
+    rep = g.normalize(
+        [{"type": "person", "name": "Paris", "summary": "a person"},
+         {"type": "location", "name": "Paris", "summary": "a city"},
+         {"type": "organization", "name": "Acme"}],
+        [{"source_name": "Paris", "semantic_type": "employed_by",
+          "target_name": "Acme"}],
+        "raw/x.md#chunk-0",
+    )
+    assert rep.edges_upserted == 0
+    assert a.count()["edges"] == 0
+
+
+def test_unambiguous_edge_endpoints_still_created(tmp_path):
+    a, g, cfg = _gate(tmp_path)
+    rep = g.normalize(
+        [{"type": "person", "name": "Demis Hassabis"},
+         {"type": "organization", "name": "DeepMind"}],
+        [{"source_name": "Demis Hassabis", "semantic_type": "employed_by",
+          "target_name": "DeepMind"}],
+        "raw/x.md/chunk-0",
+    )
+    assert rep.edges_upserted == 1
+    assert a.count()["edges"] == 1
+
+
+def test_invalid_edge_type_prevents_any_node_write(tmp_path):
+    import pytest
+    a, g, cfg = _gate(tmp_path)
+    with pytest.raises(ValueError, match="not_allowed"):
+        g.normalize(
+            [{"type": "person", "name": "Alice"}],
+            [{"source_name": "Alice", "semantic_type": "not_allowed",
+              "target_name": "Bob"}],
+            "raw/x.md#chunk-0",
+        )
+    assert a.count()["nodes"] == 0
+
+
+def test_extracted_edge_confidence_persists(tmp_path):
+    a, g, cfg = _gate(tmp_path)
+    g.normalize(
+        [{"type": "person", "name": "Alice"},
+         {"type": "organization", "name": "Acme"}],
+        [{"source_name": "Alice", "semantic_type": "employed_by",
+          "target_name": "Acme", "confidence": 0.9}],
+        "raw/x.md#chunk-0",
+    )
+    edge = Edge.model_validate_json(
+        a.conn.execute("SELECT data FROM edges").fetchone()["data"])
+    assert edge.confidence == 0.9
+
+
+def test_resolved_node_preserves_extracted_aliases(tmp_path):
+    a, g, cfg = _gate(tmp_path)
+    g.normalize([{"type": "location", "name": "Paris"}], [], "raw/x.md#chunk-0")
+    g.normalize(
+        [{"type": "location", "name": "Paris", "aliases": ["City of Light"]}],
+        [], "raw/y.md#chunk-0",
+    )
+    resolved = g.resolver.resolve("City of Light", "location")
+    assert resolved.matched_id == node_id("u", "location", "Paris")
+
+
+def test_resolved_node_adds_source_once(tmp_path):
+    a, g, cfg = _gate(tmp_path)
+    g.normalize([{"type": "location", "name": "Paris"}], [], "raw/a.md#chunk-0")
+    g.normalize([{"type": "location", "name": "Paris"}], [], "raw/b.md#chunk-1")
+    g.normalize([{"type": "location", "name": "Paris"}], [], "raw/b.md#chunk-1")
+    sources = a.get(node_id("u", "location", "Paris")).sources
+    assert sources == [
+        {"doc": "raw/a.md", "chunk": "0"},
+        {"doc": "raw/b.md", "chunk": "1"},
+]

@@ -36,13 +36,13 @@ This is the 90% path.
 
 2. **Expand** (context around seeds):
    ```
-   kg expand <seed_id> --hops 2
+   kg expand <seed_id> --hops 2 --json
    ```
    Bidirectional BFS via recursive CTE. Hard cap: 300 nodes. If cap is hit, keep highest-scoring frontier and log truncation. Repeat for each seed if needed.
 
 3. **Pack** (rank + trim to token budget):
    ```
-   kg pack <expanded-subgraph> --budget-tokens 4000
+   kg expand <seed_id> --hops 2 --json | kg pack -b 4000
    ```
    Ranking: `0.5 * RRF + 0.3 * degree-centrality + 0.2 * recency`. Dedupes, trims to budget. Output is markdown.
 

@@ -12,8 +12,7 @@ Three modes for reading the knowledge graph. Selection is automatic based on the
 
 ```
 kg search "<query>"          # FTS5 ∥ ANN, RRF k=60, top-10 seeds
-kg expand <id> --hops 2       # bidirectional BFS, recursive CTE, cap 300 nodes
-kg pack <subgraph> --budget-tokens 4000  # rank + trim to markdown
+kg expand <id> --hops 2 --json | kg pack -b 4000  # expand + rank + trim to markdown
 ```
 
 **Ranking in pack:**

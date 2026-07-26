@@ -39,6 +39,24 @@ def test_kg_search_after_save(tmp_path, monkeypatch):
     assert "u:person:alice" in out.stdout
 
 
+def test_expand_json_pipe_to_pack(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _fake_embedders(monkeypatch)
+    runner = CliRunner()
+    runner.invoke(app, ["init", "--user-id", "u"])
+    assert _save(runner, tmp_path).exit_code == 0
+    alice = node_id("u", "person", "Alice")
+
+    expanded = runner.invoke(app, ["expand", alice, "--json"])
+    assert expanded.exit_code == 0, expanded.stdout
+    assert {"nodes", "edges"} <= json.loads(expanded.stdout).keys()
+
+    packed = runner.invoke(app, ["pack", "-b", "4000"], input=expanded.stdout)
+    assert packed.exit_code == 0, packed.stdout
+    assert "# kg context" in packed.stdout
+    assert "Alice" in packed.stdout
+
+
 def test_kg_expand_and_pack(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _fake_embedders(monkeypatch)

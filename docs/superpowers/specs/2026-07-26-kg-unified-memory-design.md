@@ -334,9 +334,9 @@ kg dedup-check <node.json>                 # dry-run dedup score
 
 # query (called by /kg:query)
 kg search "<query>" [--mode hybrid|semantic|bm25|keyword] [--type ...] [-k 10]
-kg expand <node-id ...> [--hops 2] [--direction both] [--edge-types ...]
+kg expand <node-id ...> [--hops 2] [--direction both] [--edge-types ...] [--json]
 kg cypher "<read-only query>"
-kg pack <subgraph.json> [--budget 4000]
+kg pack [-b 4000]   # reads subgraph JSON from stdin; -b overrides JSON budget_tokens
 kg wiki build [--from-query "<q>" --hops 3]
 kg wiki sync
 kg wiki lint

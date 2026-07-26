@@ -38,17 +38,26 @@ def search_cli(
 def expand_cli(
     ids: list[str] = typer.Argument(...),
     hops: int = typer.Option(2, "--hops"),
+    json_output: bool = typer.Option(False, "--json"),
 ) -> None:
     paths = KgPaths.for_cwd()
     cfg = Config.from_path(paths.config)
     ad = SQLiteAdapter(paths.kg_db)
     sg = expand(ad, ids, hops=hops, cap=cfg.query.subgraph_cap)
+    if json_output:
+        typer.echo(json.dumps({
+            "nodes": [node.model_dump(mode="json") for node in sg.nodes],
+            "edges": [edge.model_dump(mode="json") for edge in sg.edges],
+        }))
+        return
     typer.echo(f"nodes: {len(sg.nodes)}  edges: {len(sg.edges)}")
     for n in sg.nodes:
         typer.echo(f"  {n.id}  {n.name}")
 
 
-def pack_cli() -> None:
+def pack_cli(
+    budget_tokens: int | None = typer.Option(None, "--budget-tokens", "-b"),
+) -> None:
     paths = KgPaths.for_cwd()
     cfg = Config.from_path(paths.config)
     raw = json.loads(sys.stdin.read())
@@ -56,5 +65,8 @@ def pack_cli() -> None:
         nodes=[Node.model_validate(n) for n in raw.get("nodes", [])],
         edges=[Edge.model_validate(e) for e in raw.get("edges", [])],
     )
-    typer.echo(pack(sg, seeds={}, rrf_scores=raw.get("rrf_scores"),
-                     budget_tokens=raw.get("budget_tokens", 4000)))
+    typer.echo(pack(
+        sg, seeds={}, rrf_scores=raw.get("rrf_scores"),
+        budget_tokens=budget_tokens if budget_tokens is not None
+        else raw.get("budget_tokens", 4000),
+    ))
