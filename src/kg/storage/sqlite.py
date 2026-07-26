@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import sqlite_vec
+from contextlib import contextmanager
 from pathlib import Path
 from kg.ontology import Node, Edge
 from kg.storage.base import StorageAdapter, Subgraph
@@ -34,14 +35,35 @@ class SQLiteAdapter(StorageAdapter):
     def __init__(self, db_path: Path):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(str(self.db_path))
+        # isolation_level=None → autocommit on by default; we issue explicit
+        # BEGIN/COMMIT/ROLLBACK inside `transaction()`. The reentrant `_in_txn`
+        # flag tells upsert/delete to skip their own commit when called inside
+        # an outer transaction.
+        self._in_txn = False
+        self.conn = sqlite3.connect(str(self.db_path), isolation_level=None)
         self.conn.row_factory = sqlite3.Row
         self.conn.enable_load_extension(True)
         sqlite_vec.load(self.conn)
         self.conn.enable_load_extension(False)
         self.conn.executescript(_SCHEMA)
         self.conn.execute("PRAGMA journal_mode=WAL")
-        self.conn.commit()
+
+    @contextmanager
+    def transaction(self):
+        if self._in_txn:
+            # Nested call — let the outermost own BEGIN/COMMIT/ROLLBACK.
+            yield
+            return
+        self._in_txn = True
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            yield
+            self.conn.execute("COMMIT")
+        except BaseException:
+            self.conn.execute("ROLLBACK")
+            raise
+        finally:
+            self._in_txn = False
 
     def _dump(self, n: Node) -> str:
         return n.model_dump_json()
@@ -67,7 +89,8 @@ class SQLiteAdapter(StorageAdapter):
                     "INSERT INTO nodes_vec(node_id, embedding) VALUES (?, ?)",
                     (n.id, sqlite_vec.serialize_float32(n.embedding)),
                 )
-        self.conn.commit()
+        if not self._in_txn:
+            self.conn.commit()
         return len(nodes)
 
     def get(self, node_id: str) -> Node | None:
@@ -88,7 +111,12 @@ class SQLiteAdapter(StorageAdapter):
         else:
             self.conn.execute("DELETE FROM nodes WHERE id=?", (node_id,))
             self.conn.execute("DELETE FROM nodes_fts WHERE node_id=?", (node_id,))
-        self.conn.commit()
+            self.conn.execute("DELETE FROM nodes_vec WHERE node_id=?", (node_id,))
+            self.conn.execute(
+                "DELETE FROM edges WHERE source=? OR target=?", (node_id, node_id)
+            )
+        if not self._in_txn:
+            self.conn.commit()
 
     def count(self) -> dict:
         n = self.conn.execute("SELECT COUNT(*) c FROM nodes").fetchone()["c"]
@@ -113,7 +141,8 @@ class SQLiteAdapter(StorageAdapter):
                 "status=excluded.status",
                 (e.id, src, tgt, sem, e.model_dump_json(), e.status),
             )
-        self.conn.commit()
+        if not self._in_txn:
+            self.conn.commit()
         return len(edges)
 
     def neighbors(self, ids: list[str], depth: int = 1,
@@ -148,20 +177,21 @@ class SQLiteAdapter(StorageAdapter):
             " SELECT value, 0 FROM json_each(?)"
             " UNION ALL"
             f" SELECT {step_select}, r.d + 1"
-            f" FROM reach r JOIN edges e ON {step_join}"
+            f" FROM reach r JOIN edges e ON {step_join} AND e.status = 'active'"
             f" WHERE r.d < ?{et_clause}"
-            ") SELECT DISTINCT nid FROM reach WHERE d > 0"
+            ") SELECT DISTINCT r.nid FROM reach r JOIN nodes n ON n.id = r.nid "
+            "WHERE r.d > 0 AND n.status != 'tombstoned'"
         )
         rows = self.conn.execute(sql, params).fetchall()
         reached = {r["nid"] for r in rows}
 
-        nodes = [n for n in (self.get(nid) for nid in reached) if n]
-        # Edges among reached ∪ seeds
+        nodes = [n for n in (self.get(nid) for nid in reached) if n and n.status != "tombstoned"]
+        # Active edges among reached ∪ seeds.
         all_ids = set(ids) | reached
         placeholders = ",".join("?" * len(all_ids))
         erows = self.conn.execute(
-            f"SELECT data FROM edges "
-            f"WHERE source IN ({placeholders}) AND target IN ({placeholders})",
+            f"SELECT data FROM edges WHERE status = 'active' "
+            f"AND source IN ({placeholders}) AND target IN ({placeholders})",
             [*all_ids, *all_ids],
         ).fetchall()
         edges = [Edge.model_validate_json(r["data"]) for r in erows]
@@ -177,8 +207,8 @@ class SQLiteAdapter(StorageAdapter):
         )
         params: list = [query]
         if type_filter:
-            sql += " AND n.data LIKE ?"
-            params.append(f'%"type": "{type_filter}"%')
+            sql += " AND json_extract(n.data, '$.type') = ?"
+            params.append(type_filter)
         sql += " ORDER BY r LIMIT ?"
         params.append(k)
         rows = self.conn.execute(sql, params).fetchall()

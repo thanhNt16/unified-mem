@@ -12,6 +12,16 @@ def test_node_id_stable_across_surface_forms():
     assert a == b
 
 
+def test_node_id_hashes_empty_unicode_or_punctuation_slugs():
+    tokyo = node_id("u", "person", "東京")
+    beijing = node_id("u", "person", "北京")
+    punctuation = node_id("u", "person", "!!")
+    assert tokyo != beijing
+    assert tokyo and beijing
+    assert punctuation == node_id("u", "person", "!!")
+    assert punctuation
+
+
 def test_edge_id_format_and_idempotence():
     eid = edge_id("quan:person:a", "employed_by", "quan:organization:b")
     assert eid == "quan:person:a|employed_by|quan:organization:b"

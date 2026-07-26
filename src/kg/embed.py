@@ -17,6 +17,15 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
     return dot / (a_norm * b_norm) if a_norm and b_norm else 0.0
 
 
+def _normalize(vec: list[float]) -> list[float]:
+    """L2-normalize at the Embedder boundary so vec_search's L2 distance is
+    monotonic with cosine. Zero-vectors returned unchanged (cannot normalize)."""
+    norm = sum(x * x for x in vec) ** 0.5
+    if not norm:
+        return list(vec)
+    return [x / norm for x in vec]
+
+
 class Embedder(ABC):
     @abstractmethod
     def embed(self, text: str) -> list[float]: ...
@@ -66,11 +75,11 @@ class LocalEmbedder(Embedder):
 
     def embed(self, text: str) -> list[float]:
         self._load()
-        return next(self._model.embed([text])).tolist()
+        return _normalize(next(self._model.embed([text])).tolist())
 
     def embed_many(self, texts: list[str]) -> list[list[float]]:
         self._load()
-        return [v.tolist() for v in self._model.embed(texts)]
+        return [_normalize(v.tolist()) for v in self._model.embed(texts)]
 
     def dim(self) -> int:
         return self._dim

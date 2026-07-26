@@ -1,4 +1,5 @@
 from __future__ import annotations
+import hashlib
 import re
 from dataclasses import dataclass
 import tiktoken
@@ -9,6 +10,11 @@ _HEADING = re.compile(r"^(?:#{1,6})\s+", re.MULTILINE)
 
 def slugify(text: str, max_len: int = 80) -> str:
     s = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    if not s:
+        # Non-ASCII / pure-punctuation names collapse to "". Fall back to a
+        # stable short hash so different names produce different IDs and the
+        # slug is never empty (which would collide at "{user}:{type}:").
+        return "x" + hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
     return s[:max_len]
 
 
