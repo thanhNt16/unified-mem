@@ -5,14 +5,15 @@ from kg.dedup import Deduper, DedupResult
 from kg.embed import FakeEmbedder
 from kg.config import Config
 from kg.ontology import Node, Edge
-from kg.ids import node_id, edge_id
+from kg.ids import allocate_node_id, node_id, edge_id
+import pytest
 
 
 def _gate(tmp_path):
     cfg = Config.default()
     a = SQLiteAdapter(tmp_path / "kg.db")
     emb = FakeEmbedder()
-    g = Gate(a, Resolver(a, emb, cfg.thresholds, "u"),
+    g = Gate(a, Resolver(a, emb, cfg.thresholds),
              Deduper(a, emb, cfg.thresholds), emb, cfg, user_id="u")
     return a, g, cfg
 
@@ -281,4 +282,192 @@ def test_resolved_node_adds_source_once(tmp_path):
     assert sources == [
         {"doc": "raw/a.md", "chunk": "0"},
         {"doc": "raw/b.md", "chunk": "1"},
-]
+    ]
+
+
+class _RecordingDeduper:
+    def __init__(self, match_id=None, score=0.0):
+        self.match_id = match_id
+        self.score = score
+        self.calls = []
+
+    def dedup(self, node, embed_fields=None):
+        self.calls.append(node)
+        return DedupResult(self.match_id, self.score)
+
+
+def test_same_name_distinct_contexts_both_persist(tmp_path):
+    a, g, cfg = _gate(tmp_path)
+    g.normalize(
+        [{"type": "person", "name": "Paris", "summary": "capital of France"}],
+        [], "raw/fr.md#chunk-0",
+    )
+    recorder = _RecordingDeduper(node_id("u", "person", "Paris"), 0.1)
+    g.deduper = recorder
+
+    rep = g.normalize(
+        [{"type": "person", "name": "Paris", "summary": "city in Texas, USA"}],
+        [], "raw/tx.md#chunk-0",
+    )
+
+    active = a.conn.execute(
+        "SELECT data FROM nodes WHERE status='active'"
+    ).fetchall()
+    people = [Node.model_validate_json(r["data"]) for r in active]
+    assert len(people) == 2
+    assert {n.id for n in people} == {
+        node_id("u", "person", "Paris"),
+        f'{node_id("u", "person", "Paris")}-2',
+    }
+    assert rep.decisions[0].action == "NEW"
+    assert len(recorder.calls) == 1
+
+
+def test_same_name_same_context_merges(tmp_path):
+    a, g, cfg = _gate(tmp_path)
+    record = [{"type": "person", "name": "Paris", "summary": "capital of France"}]
+    g.normalize(record, [], "raw/fr.md#chunk-0")
+
+    rep = g.normalize(record, [], "raw/fr.md#chunk-0")
+
+    assert a.count()["nodes"] == 1
+    assert rep.decisions[0].action in {"RESOLVED", "MERGED"}
+
+
+def test_resolver_does_not_short_circuit_dedup(tmp_path):
+    a, g, cfg = _gate(tmp_path)
+    g.normalize([{"type": "person", "name": "Paris", "summary": "France"}], [],
+                "raw/fr.md#chunk-0")
+    recorder = _RecordingDeduper(node_id("u", "person", "Paris"), 0.1)
+    g.deduper = recorder
+
+    g.normalize([{"type": "person", "name": "Paris", "summary": "Texas"}], [],
+                "raw/tx.md#chunk-0")
+
+    assert len(recorder.calls) == 1
+
+
+def test_allocate_node_id_uses_first_free_suffix(tmp_path):
+    a, g, cfg = _gate(tmp_path)
+    base = node_id("u", "person", "Paris")
+    a.upsert_nodes([
+        Node(id=base, type="person", name="Paris"),
+        Node(id=f"{base}-2", type="person", name="Paris"),
+    ])
+    assert allocate_node_id(a, "u", "person", "Paris") == f"{base}-3"
+
+
+def test_merge_preserves_colliding_winner_edge_metadata(tmp_path):
+    a, g, cfg = _gate(tmp_path)
+    winner, loser, org = "u:person:a", "u:person:c", "u:organization:b"
+    a.upsert_nodes([
+        Node(id=winner, type="person", name="A"),
+        Node(id=loser, type="person", name="C"),
+        Node(id=org, type="organization", name="B"),
+    ])
+    a.upsert_edges([
+        Edge(id=edge_id(winner, "employed_by", org), semantic_type="employed_by",
+             sources=[{"doc": "w"}], summary="winner", confidence=0.8),
+        Edge(id=edge_id(loser, "employed_by", org), semantic_type="employed_by",
+             sources=[{"doc": "l"}], summary="x", confidence=0.7),
+    ])
+
+    g.merge(winner, loser)
+
+    row = a.conn.execute(
+        "SELECT data FROM edges WHERE id=?", (edge_id(winner, "employed_by", org),)
+    ).fetchone()
+    merged = Edge.model_validate_json(row["data"])
+    assert merged.sources == [{"doc": "w"}, {"doc": "l"}]
+    assert merged.summary == "winner"
+    assert merged.confidence == 0.8
+
+
+def test_normalize_rolls_back_all_writes_on_mid_batch_failure(tmp_path, monkeypatch):
+    a, g, cfg = _gate(tmp_path)
+
+    def fail(_):
+        raise RuntimeError("edge failure")
+
+    monkeypatch.setattr(a, "upsert_edges", fail)
+    with pytest.raises(RuntimeError, match="edge failure"):
+        g.normalize(
+            [{"type": "person", "name": "Alice"},
+             {"type": "organization", "name": "Acme"}],
+            [{"source_name": "Alice", "semantic_type": "employed_by",
+              "target_name": "Acme"}],
+            "raw/x.md#chunk-0",
+        )
+    assert a.count() == {"nodes": 0, "edges": 0}
+
+
+def test_merge_rolls_back_winner_when_tombstone_fails(tmp_path, monkeypatch):
+    a, g, cfg = _gate(tmp_path)
+    winner = Node(id="u:person:w", type="person", name="Winner", aliases=["old"])
+    loser = Node(id="u:person:l", type="person", name="Loser", aliases=["new"])
+    a.upsert_nodes([winner, loser])
+    original = a.upsert_nodes
+    calls = 0
+
+    def fail_second(nodes):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("tombstone failure")
+        return original(nodes)
+
+    monkeypatch.setattr(a, "upsert_nodes", fail_second)
+    with pytest.raises(RuntimeError, match="tombstone failure"):
+        g.merge(winner.id, loser.id)
+    assert a.get(winner.id).aliases == ["old"]
+    assert a.get(loser.id).status == "active"
+
+
+def test_fact_persists_embeds_dedups_and_skips_resolver(tmp_path, monkeypatch):
+    a, g, cfg = _gate(tmp_path)
+    calls = []
+    original = g.resolver.resolve
+
+    def record_resolve(name, type_):
+        calls.append((name, type_))
+        return original(name, type_)
+
+    monkeypatch.setattr(g.resolver, "resolve", record_resolve)
+    fact = {"subject": "AlphaFold 3", "predicate": "released_in", "object": "2024"}
+    first = g.normalize([], [], "raw/a.md#chunk-0", facts=[fact])
+    second = g.normalize([], [], "raw/a.md#chunk-0", facts=[fact])
+
+    stored = [Node.model_validate_json(r["data"]) for r in a.conn.execute(
+        "SELECT data FROM nodes WHERE status='active'"
+    ).fetchall()]
+    assert len(stored) == 1
+    assert stored[0].type == "fact"
+    assert stored[0].embedding is not None
+    assert stored[0].attributes == fact
+    assert calls == []
+    assert first.decisions[0].action == "NEW"
+    assert second.decisions[0].action in {"RESOLVED", "MERGED"}
+
+
+def test_missing_edge_is_reported(tmp_path):
+    a, g, cfg = _gate(tmp_path)
+    rep = g.normalize(
+        [{"type": "person", "name": "Alice"}],
+        [{"source_name": "Alice", "semantic_type": "employed_by",
+          "target_name": "Missing Org"}],
+        "raw/x.md#chunk-0",
+    )
+    assert rep.dropped_edges == [{
+        "source_name": "Alice",
+        "target_name": "Missing Org",
+        "semantic_type": "employed_by",
+        "reason": "missing",
+    }]
+
+
+def test_source_without_chunk_token_defaults_chunk_zero(tmp_path):
+    a, g, cfg = _gate(tmp_path)
+    g.normalize([{"type": "person", "name": "Alice"}], [], "raw/x.md")
+    assert a.get(node_id("u", "person", "Alice")).sources == [
+        {"doc": "raw/x.md", "chunk": "0"}
+    ]
