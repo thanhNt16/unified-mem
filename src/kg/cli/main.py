@@ -31,6 +31,7 @@ from kg.cli import raw as raw_cmd  # noqa: E402
 from kg.cli import status as status_cmd  # noqa: E402
 from kg.cli import config_cmd  # noqa: E402
 from kg.cli import wiki_cli  # noqa: E402
+from kg.cli import cypher_cli  # noqa: E402
 
 app.command(name="init")(init_cmd.init_cli)
 app.command(name="install")(install_cli.install)
@@ -51,6 +52,7 @@ app.command(name="expand")(query_cmd.expand_cli)
 app.command(name="pack")(query_cmd.pack_cli)
 app.command(name="resolve")(rcli.resolve_cli)
 app.command(name="dedup-check")(rcli.dedup_check_cli)
+app.command(name="cypher")(cypher_cli.cypher_cli)
 
 from kg.cli import snapshot_cmd  # noqa: E402
 from kg.cli import review as review_cmd  # noqa: E402
