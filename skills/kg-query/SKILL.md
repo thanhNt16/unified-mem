@@ -20,7 +20,12 @@ See `references/query-modes.md` for full details. Short form:
 |---|---|---|
 | **hybrid** (default) | Most questions. Short, factual, lookup-style. | `kg search` then `kg expand` then `kg pack` |
 | **NL-Cypher** | Structural queries: "all orgs founded before 2020", "path from X to Y". | `kg cypher <generated-Cypher>` |
+
+> **Deferred to M2:** `kg cypher` is not yet implemented in M1; the command will exit with an error.
+
 | **deep-search** | Exploratory / broad / 50+ potential hits. | `kg wiki build --from-query --hops 3` then read wiki pages |
+
+> **Deferred to M4:** `kg wiki build` is not yet implemented in M1; the command will exit with an error.
 
 Default to hybrid. Switch to NL-Cypher only when the question is explicitly structural (path, aggregation, pattern). Switch to deep-search when hybrid returns >50 hits or the user says "everything about", "comprehensive review", "all context on".
 
@@ -58,6 +63,8 @@ For structural questions the hybrid index can't handle (aggregations, path queri
    ```
    kg cypher "MATCH (p:person)-[:employed_by]->(o:organization) RETURN p.name, o.name"
    ```
+
+   > **Deferred to M2:** `kg cypher` is not yet implemented in M1; the command will exit with an error.
 4. Use the results directly (no expand/pack needed for structured output).
 
 ponytail: NL-to-Cypher generation is model-side in M1. `kg cypher` validates the AST server-side and rejects any non-read clause. Keep Cypher simple and read-only by construction.
@@ -67,6 +74,9 @@ ponytail: NL-to-Cypher generation is model-side in M1. `kg cypher` validates the
 For exploratory questions needing broad coverage:
 
 1. `kg wiki build --from-query "<question>" --hops 3`
+
+   > **Deferred to M4:** `kg wiki build` is not yet implemented in M1; the command will exit with an error.
+
    Materializes `wiki/deep/<slug>/` with:
    - `index.md` — summary index of all entities found
    - `entities/<slug>.md` — per-entity pages with cross-links

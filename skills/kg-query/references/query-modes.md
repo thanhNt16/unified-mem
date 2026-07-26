@@ -41,6 +41,8 @@ kg expand <id> --hops 2 --json | kg pack -b 4000  # expand + rank + trim to mark
 kg cypher "<generated Cypher>"
 ```
 
+> **Deferred to M2:** `kg cypher` is not yet implemented in M1; the command will exit with an error.
+
 **Allowed Cypher clauses:** `MATCH`, `OPTIONAL MATCH`, `WHERE`, `WITH`, `RETURN`, `ORDER BY`, `LIMIT`.
 **Forbidden (engine rejects):** `CREATE`, `MERGE`, `SET`, `DELETE`, `CALL`.
 
@@ -67,6 +69,8 @@ The skill reads `ontology.json` to generate valid type labels and property names
 ```
 kg wiki build --from-query "<question>" --hops 3
 ```
+
+> **Deferred to M4:** `kg wiki build` is not yet implemented in M1; the command will exit with an error.
 
 This creates `wiki/deep/<slug>/` containing:
 - `index.md` — summary of all entities and their connections

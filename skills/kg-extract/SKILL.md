@@ -7,7 +7,10 @@ description: Extract POLE entities (Person, Organization, Location, Event) plus 
 
 Turn raw markdown in `raw/` into graph nodes and edges. Extraction is **harness-side intelligence**: this skill prompts the model per chunk, validates JSON against the ontology contract, then hands the result to `kg save`, which runs the deterministic normalization gate (§6.3 of the spec). The model never writes to the graph directly.
 
+> **Deferred to M2:** `kg raw rechunk` is not yet implemented in M1; the command will exit with an error.
+
 This skill assumes `/kg:ingest` has already placed the source in `raw/` with chunk boundaries in frontmatter. If you don't see frontmatter `chunks:`, run `kg raw rechunk <file>` first.
+
 
 ## When to run
 
@@ -19,7 +22,10 @@ This skill assumes `/kg:ingest` has already placed the source in `raw/` with chu
 
 For each raw file the user names:
 
+   > **Deferred to M2:** `kg raw status` is not yet implemented in M1; the command will exit with an error.
+
 1. **Read the registry entry** — `kg raw status <file>` returns the per-chunk state (`chunks_done`, `chunks_failed`). Resume from the first undone chunk; do not re-run completed chunks unless the user asks.
+
 2. **For each chunk** (chunk boundaries come from frontmatter, 512 tok / 64 overlap, split on markdown headings then size — never mid-sentence):
    a. Load the chunk text from `raw/<file>.md` between the byte offsets in frontmatter.
    b. Build the extraction prompt (see `references/extraction-prompt.md`) using:
@@ -37,6 +43,8 @@ For each raw file the user names:
       kg save \
         --nodes <(jq '.nodes' extracted.json) \
         --edges <(jq '.edges' extracted.json) \
+        --facts <(jq '.facts // []' extracted.json) \
+        --preferences <(jq '.preferences // []' extracted.json) \
         --source raw/<file>.md#chunk-<n>
       ```
       The engine runs the gate (validate → resolve → embed → dedup → route) and prints per-entity decisions:
@@ -47,9 +55,16 @@ For each raw file the user names:
       FLAGGED u:location:paris (0.89)  → review/same_as.md
       ```
       Echo these decisions to the user as they arrive.
+
+      > **Deferred to M2:** `kg raw checkpoint` is not yet implemented in M1; the command will exit with an error.
+
    f. **Checkpoint** after each chunk: `kg raw checkpoint <file> --chunk <n> --status done|failed`.
 3. **After the file** finishes:
+
+   > **Deferred to M2:** `kg wiki sync` is not yet implemented in M1; the command will exit with an error.
+
    - Run `kg wiki sync --touched <file>` to regenerate affected entity pages (`wiki/entities/<slug>.md`).
+
    - Mark the registry entry `extracted`.
    - Surface the gray-zone list to the user: "N pairs flagged — run `/kg:dream` or `kg review list`."
 
