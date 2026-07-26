@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -6,6 +7,8 @@ from kg.ontology import Node, Edge, ALLOWED_NODE_TYPES
 from kg.ontology import ALLOWED_SEMANTIC_EDGE_TYPES, STRUCTURAL_EDGE_TYPES
 from kg.ids import node_id, edge_id
 from kg.dedup import full_context_embedding
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -40,12 +43,19 @@ class Gate:
     def normalize(self, extracted_nodes, extracted_edges, source) -> SaveReport:
         report = SaveReport()
         name_to_id: dict[str, str] = {}
+        seen_names: set[str] = set()
 
         for en in extracted_nodes:
             type_ = en["type"]
             if type_ not in ALLOWED_NODE_TYPES:
                 raise ValueError(f"Unknown node type: {type_!r}")
             name = en["name"]
+
+            if name in seen_names:
+                logger.warning(
+                    "Duplicate name %r in batch; skipping, first-write-wins", name)
+                continue
+            seen_names.add(name)
 
             # 2. RESOLVE (naming only)
             res = self.resolver.resolve(name, type_)
@@ -66,6 +76,7 @@ class Gate:
                 id=node_id(self.user_id, type_, name),
                 type=type_, subtype=en.get("subtype"),
                 name=name, canonical_name=name,
+                aliases=en.get("aliases", []),
                 summary=en.get("summary"),
                 attributes=en.get("attributes", {}),
                 sources=[{"doc": source.split("#")[0],

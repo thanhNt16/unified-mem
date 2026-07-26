@@ -162,3 +162,30 @@ def test_flagged_same_as_edge_is_pending(tmp_path):
     assert len(rows) == 1
     assert rows[0]["status"] == "pending"
     assert Edge.model_validate_json(rows[0]["data"]).status == "pending"
+
+
+# --- Fix round 2: I1 extracted aliases preserved ---
+def test_extracted_aliases_preserved_for_resolution(tmp_path):
+    a, g, cfg = _gate(tmp_path)
+    g.normalize(
+        [{"type": "person", "name": "Paris", "aliases": ["City of Light"],
+          "summary": "capital of France"}],
+        [], "raw/x.md#chunk-0",
+    )
+    res = g.resolver.resolve("City of Light", "person")
+    assert res.via == "exact"
+    assert res.matched_id == node_id("u", "person", "Paris")
+
+
+# --- Fix round 2: I2 duplicate names in one batch guarded, first-write-wins ---
+def test_duplicate_name_in_batch_first_write_wins(tmp_path):
+    a, g, cfg = _gate(tmp_path)
+    rep = g.normalize(
+        [{"type": "person", "name": "Dup", "summary": "first"},
+         {"type": "person", "name": "Dup", "summary": "second"}],
+        [], "raw/x.md#chunk-0",
+    )
+    assert a.count()["nodes"] == 1
+    node = a.get(node_id("u", "person", "Dup"))
+    assert node.summary == "first"
+    assert len(rep.decisions) == 1
