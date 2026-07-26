@@ -102,11 +102,19 @@ def resolve_paths(project_dir: Path | str) -> KgPaths:
         raise HandlerError(
             -32602, "project not initialized: missing .kg/",
         )
-    # Symlink-traversal guard: .kg must live directly under the resolved root.
+    # Symlink-traversal guard: refuse if .kg itself is a symlink (could point
+    # outside the resolved project root), and refuse if its resolved parent
+    # isn't the resolved root (e.g. nested-worktree symlink tricks). The
+    # earlier form compared kg_dir.resolve() to itself and was a no-op.
     try:
-        if kg_dir.resolve() != (root / ".kg").resolve():
+        if kg_dir.is_symlink():
             raise HandlerError(
                 -32602, ".kg is a symlink — refusing to follow",
+            )
+        resolved_kg = kg_dir.resolve(strict=True)
+        if resolved_kg.parent != root:
+            raise HandlerError(
+                -32602, ".kg resolves outside project root",
             )
     except OSError as exc:
         raise HandlerError(
@@ -654,11 +662,14 @@ def review_confirm(
         audit = gate.review_merge(eid, wid, loser_id)
     except ValueError as exc:
         raise HandlerError(-32602, "review_confirm rejected by gate") from exc
+    if reason_safe is not None:
+        _append_review_audit_reason(paths, eid, reason_safe, audit.action)
     return {
         "action": audit.action,
         "edge_id": audit.review_edge_id,
         "winner_id": audit.winner_id,
         "loser_id": audit.loser_id,
+        "reason": reason_safe,
         "timestamp": audit.timestamp,
         # NOTE: audit body (winner_before/loser_before/edges_before) is NOT
         # surfaced by default — large + may carry PII. CLI writes full body
@@ -691,9 +702,12 @@ def review_reject(
         audit = gate.reject_review(eid)
     except ValueError as exc:
         raise HandlerError(-32602, "review_reject rejected by gate") from exc
+    if reason_safe is not None:
+        _append_review_audit_reason(paths, eid, reason_safe, audit.action)
     return {
         "action": audit.action,
         "edge_id": audit.review_edge_id,
+        "reason": reason_safe,
         "timestamp": audit.timestamp,
     }
 
@@ -728,8 +742,41 @@ def merge_nodes(
         "action": audit.action,
         "winner_id": audit.winner_id,
         "loser_id": audit.loser_id,
+        "reason": reason_safe,
         "timestamp": audit.timestamp,
     }
+
+
+def _append_review_audit_reason(
+    paths: KgPaths, edge_id: str, reason: str, action: str,
+) -> None:
+    """Append MCP-supplied reason to .kg/wiki/log.md alongside Gate's audit.
+
+    Gate.review_merge/reject_review/merge do not accept ``reason``; the CLI
+    layer has always appended it after the fact. Mirror that for MCP so the
+    audit trail records why a human confirmed/rejected. Best-effort: an OS
+    failure here is logged but does not fail the write (the DB commit is
+    already durable).
+    """
+    import logging as _logging
+    record = {
+        "timestamp": _now_iso(),
+        "action": f"{action}:reason",
+        "edge_id": edge_id,
+        "reason": reason,
+        "source": "mcp",
+    }
+    log = _logging.getLogger("kg.mcp.audit")
+    try:
+        with (paths.wiki / "log.md").open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError as exc:
+        log.warning("audit reason append failed for %s: %s", edge_id, exc)
+
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
 
 
 # ---------------------------------------------------------------------------
@@ -845,20 +892,66 @@ WRITE_TOOLS: dict[str, dict] = {
             "properties": {
                 "nodes": {
                     "type": _ARR, "maxItems": MAX_K,
-                    "items": {"type": _OBJ, "additionalProperties": True},
+                    "items": {
+                        "type": _OBJ, "additionalProperties": False,
+                        "required": ["type", "name"],
+                        "properties": {
+                            "type": _enum(sorted(ALLOWED_NODE_TYPES)),
+                            "name": {"type": _STR, "minLength": 1, "maxLength": 256},
+                            "subtype": {"type": _STR, "maxLength": 128},
+                            "aliases": {
+                                "type": _ARR, "maxItems": 50,
+                                "items": {"type": _STR, "maxLength": 256},
+                            },
+                            "summary": {"type": _STR, "maxLength": 8_000},
+                            "attributes": {"type": _OBJ, "maxProperties": 100},
+                            "valid_from": {"type": _STR, "maxLength": 64},
+                            "valid_until": {"type": _STR, "maxLength": 64},
+                        },
+                    },
                 },
                 "edges": {
                     "type": _ARR, "maxItems": MAX_K,
-                    "items": {"type": _OBJ, "additionalProperties": True},
+                    "items": {
+                        "type": _OBJ, "additionalProperties": False,
+                        "required": ["source_name", "target_name", "semantic_type"],
+                        "properties": {
+                            "source_name": {"type": _STR, "minLength": 1, "maxLength": 256},
+                            "target_name": {"type": _STR, "minLength": 1, "maxLength": 256},
+                            "semantic_type": _enum(sorted(ALLOWED_SEMANTIC_EDGE_TYPES | STRUCTURAL_EDGE_TYPES)),
+                            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                            "summary": {"type": _STR, "maxLength": 8_000},
+                        },
+                    },
                 },
                 "source": {"type": _STR, "minLength": 1, "maxLength": MAX_SOURCE_CHARS},
                 "facts": {
                     "type": _ARR, "maxItems": MAX_K,
-                    "items": {"type": _OBJ, "additionalProperties": True},
+                    "items": {
+                        "type": _OBJ, "additionalProperties": False,
+                        "required": ["subject", "predicate", "object"],
+                        "properties": {
+                            "subject": {"type": _STR, "minLength": 1, "maxLength": 256},
+                            "predicate": {"type": _STR, "minLength": 1, "maxLength": 256},
+                            "object": {"type": _STR, "minLength": 1, "maxLength": 256},
+                            "summary": {"type": _STR, "maxLength": 8_000},
+                        },
+                    },
                 },
                 "preferences": {
                     "type": _ARR, "maxItems": MAX_K,
-                    "items": {"type": _OBJ, "additionalProperties": True},
+                    "items": {
+                        "type": _OBJ, "additionalProperties": False,
+                        "anyOf": [{"required": ["name"]}, {"required": ["subject"]}],
+                        "properties": {
+                            "name": {"type": _STR, "minLength": 1, "maxLength": 256},
+                            "subject": {"type": _STR, "minLength": 1, "maxLength": 256},
+                            "summary": {"type": _STR, "maxLength": 8_000},
+                            "attributes": {"type": _OBJ, "maxProperties": 100},
+                            "valid_from": {"type": _STR, "maxLength": 64},
+                            "valid_until": {"type": _STR, "maxLength": 64},
+                        },
+                    },
                 },
             },
         },

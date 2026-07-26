@@ -149,6 +149,18 @@ def test_project_root_required_and_arbitrary_paths_rejected(tmp_path: Path):
         search_memory(not_dir, query="x", embedder=FakeEmbedder())
 
 
+def test_symlinked_kg_rejected(tmp_path: Path):
+    outside = tmp_path / "outside"
+    init_project(outside, user_id="u", scope="s")
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / ".kg").symlink_to(outside / ".kg", target_is_directory=True)
+
+    with pytest.raises(HandlerError) as exc:
+        search_memory(project, query="x", embedder=FakeEmbedder())
+    assert "symlink" in exc.value.message
+
+
 def test_resource_reads_bounded_and_path_contained(project: Path):
     ontology = json.loads(read_ontology(project))
     assert "node_types" in ontology
@@ -162,36 +174,44 @@ def test_resource_reads_bounded_and_path_contained(project: Path):
 
 
 def test_review_confirm_preserves_pending_and_winner_semantics(project: Path, emb: FakeEmbedder):
-    # Two nearly identical names create a pending same_as under test thresholds.
-    save_pole(
-        project,
-        nodes=[{"type": "person", "name": "Alice Example"}],
-        edges=[], source="raw/a.md#chunk-0", authorized=True, embedder=emb,
-    )
-    save_pole(
-        project,
-        nodes=[{"type": "person", "name": "Alice Examples"}],
-        edges=[], source="raw/b.md#chunk-0", authorized=True, embedder=emb,
-    )
+    # Build a pending same_as directly to make the test deterministic across
+    # embedder scoring variations; review semantics is what we care about here.
+    from kg.ontology import Edge, Node
+    from kg.ids import edge_id
+    from kg.storage.sqlite import SQLiteAdapter
+
+    ad = SQLiteAdapter(project / ".kg" / "kg.db")
+    a = Node(id="person:alice-a", type="person", name="Alice A",
+             embedding=emb.embed("Alice A"))
+    b = Node(id="person:alice-b", type="person", name="Alice B",
+             embedding=emb.embed("Alice B"))
+    ad.upsert_nodes([a, b])
+    eid = edge_id(a.id, "same_as", b.id)
+    ad.upsert_edges([Edge(
+        id=eid, semantic_type="same_as", status="pending", confidence=0.9,
+    )])
+
     pending = dream_candidates_tool(project, kind="pending")["candidates"]
-    # Fake embeddings can fall outside gray-zone; skip only this semantic setup.
-    if not pending:
-        pytest.skip("FakeEmbedder score not in pending threshold band")
+    assert pending, "directly-inserted pending edge must surface"
     edge = pending[0]
-    winner = edge["node_ids"][0]
+    winner = a.id
 
     with pytest.raises(HandlerError):
         review_confirm(
-            project, edge_id=edge["edge_id"], winner_id="not-an-endpoint",
+            project, edge_id=eid, winner_id="not-an-endpoint",
             authorized=True, embedder=emb,
         )
 
     result = review_confirm(
-        project, edge_id=edge["edge_id"], winner_id=winner,
-        authorized=True, embedder=emb,
+        project, edge_id=eid, winner_id=winner,
+        authorized=True, embedder=emb, reason="agreed",
     )
     assert result["action"] == "review_confirm"
     assert result["winner_id"] == winner
+    assert result["reason"] == "agreed"
+    # Edge consumed by review.
+    row = ad.conn.execute("SELECT id FROM edges WHERE id=?", (eid,)).fetchone()
+    assert row is None
 
 
 def test_review_reject_marks_pending_edge_rejected(project: Path, emb: FakeEmbedder):
