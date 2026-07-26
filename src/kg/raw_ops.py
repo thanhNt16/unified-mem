@@ -19,7 +19,7 @@ def _raw_relpath(type_: str, title: str | None, sha: str,
                  conversation: bool) -> str:
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     base = title or sha[:12]
-    name = f"{today}--{type_}--{slugify(base)}.md"
+    name = f"{today}--{type_}--{slugify(base)}--{sha[:12]}.md"
     if conversation:
         return f"raw/conversations/{name}"
     return f"raw/{name}"

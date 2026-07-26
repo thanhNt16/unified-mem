@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import typer
 from kg import __version__
 
@@ -56,3 +58,41 @@ app.command(name="snapshot")(snapshot_cmd.snapshot_cli)
 app.command(name="merge")(review_cmd.merge_cli)
 app.add_typer(review_cmd.review_app, name="review")
 app.add_typer(dream_cmd.dream_app, name="dream")
+
+mcp_app = typer.Typer(help="Run the kg MCP server.")
+app.add_typer(mcp_app, name="mcp")
+
+
+@mcp_app.command(name="serve")
+def _mcp_serve(
+    project_root: Path = typer.Option(
+        ..., "--project-root", help="Project root containing .kg/."
+    ),
+    allow_writes: bool = typer.Option(
+        False, "--allow-writes", help="Enable write tools (default: read-only)."
+    ),
+) -> None:
+    """Serve kg over MCP stdio. stdout emits JSON-RPC only."""
+    from kg.mcp.server import run_stdio
+
+    run_stdio(project_root, allow_writes=allow_writes)
+
+
+hook_app = typer.Typer(help="Harness hook entrypoints.")
+app.add_typer(hook_app, name="hook")
+
+
+@hook_app.command(name="session-end")
+def _hook_session_end(
+    project_root: Path = typer.Option(
+        ..., "--project-root", help="Project root containing .kg/."
+    ),
+) -> None:
+    """Claude SessionEnd conversation-ingest hook. stdout is always empty."""
+    import sys as _sys
+
+    from kg.hooks.session_end import run as _run
+
+    code = _run(project_root, stdin=_sys.stdin.buffer, stderr=_sys.stderr)
+    if code:
+        raise typer.Exit(code)
