@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from kg.ontology import Node
-from kg.wiki import _MANIFEST
+from kg.wiki import _MANIFEST, _text
 
 _MAX_FILES = 10_000
 
@@ -146,7 +146,10 @@ def lint(entities_dir: Path, adapter) -> list[Issue]:
             node_id = fn_to_id[rel]
             node_summary = summaries.get(node_id, "")
             page_summary = _page_summary(text)
-            if node_summary and page_summary and page_summary != node_summary:
+            # Page stores the summary through wiki._text (whitespace-collapsed,
+            # control-stripped, markdown+html-escaped). Compare escaped-to-
+            # escaped via the same encoder instead of raw-vs-escaped.
+            if node_summary and page_summary and page_summary != _text(node_summary):
                 issues.append(Issue(
                     "STALE_SUMMARY", rel,
                     "page summary does not match node summary",

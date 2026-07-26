@@ -271,12 +271,9 @@ def test_wiki_lint_clean_on_fresh_sync(tmp_path, monkeypatch):
     lint = runner.invoke(app, ["wiki", "lint"])
     assert lint.exit_code == 0, f"lint: {lint.output}\n{lint.exception!r}"
     combined = (lint.output + "").lower()
-    # BLOCKER: wiki.py _text() escapes markdown (e.g. "." -> "\."), so
-    # page summary never matches raw node.summary -> STALE_SUMMARY false
-    # positive on every fresh sync. Genuine bug in wiki_lint.py.
-    # When wiki_lint strips escapes before comparing, flip to "no issues".
-    assert "stale_summary" in combined
-    # No orphan or broken_link on clean sync.
+    # Fresh sync must be clean: lint compares escaped-to-escaped (via wiki._text),
+    # so no STALE_SUMMARY false positive, and no orphan/broken_link.
+    assert "stale_summary" not in combined
     assert "orphan" not in combined
     assert "broken_link" not in combined
 
