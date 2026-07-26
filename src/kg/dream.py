@@ -20,7 +20,7 @@ class Candidate:
     node_type: str | None = None
 
 
-def _resolve_since(since: str | None) -> str | None:
+def _resolve_since(since: str | None) -> datetime | None:
     if not since:
         return None
     try:
@@ -29,11 +29,30 @@ def _resolve_since(since: str | None) -> str | None:
         n = int(since[:-1])
         delta_map = {"d": "days", "h": "hours", "m": "minutes"}
         if unit in delta_map:
-            return (datetime.now(timezone.utc) -
-                    timedelta(**{delta_map[unit]: n})).isoformat()
+            return datetime.now(timezone.utc) - timedelta(**{delta_map[unit]: n})
     except (ValueError, IndexError):
         pass
-    return since
+    # Otherwise treat as ISO-8601 timestamp cutoff.
+    return _parse_ts(since)
+
+
+def _parse_ts(s: str | None) -> datetime | None:
+    if not s:
+        return None
+    try:
+        # fromisoformat handles date-only and Z-suffixed ISO-8601 values.
+        value = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+    except ValueError:
+        return None
+
+
+def _node_recent(n: Node, cutoff: datetime) -> bool:
+    """Node is in-window if EITHER created_at or updated_at >= cutoff."""
+    c = _parse_ts(n.created_at)
+    u = _parse_ts(n.updated_at)
+    latest = max(filter(None, (c, u)), default=None)
+    return latest is not None and latest >= cutoff
 
 
 def dream_candidates(
@@ -49,7 +68,7 @@ def dream_candidates(
     nodes = [Node.model_validate_json(r["data"]) for r in rows]
 
     if since_ts:
-        nodes = [n for n in nodes if (n.created_at or "") >= since_ts]
+        nodes = [n for n in nodes if _node_recent(n, since_ts)]
 
     by_type: dict[str, list[Node]] = {}
     for n in nodes:

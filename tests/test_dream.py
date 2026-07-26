@@ -89,3 +89,32 @@ def test_recent_pair_skips_tombstoned(tmp_path):
     cands = dream_candidates(a, since="2026-07-25")
     rp = [c for c in cands if c.reason == "recent-pair"]
     assert len(rp) == 0
+
+
+def test_recent_pair_includes_recently_updated(tmp_path):
+    """Controller spec: created_at OR updated_at in window qualifies node."""
+    a = SQLiteAdapter(tmp_path / "kg.db")
+    a.upsert_nodes([
+        Node(id="u:person:a", type="person", name="Paris", canonical_name="Paris",
+             created_at="2020-01-01T00:00:00Z",
+             updated_at="2026-07-26T10:00:00Z"),
+        Node(id="u:person:b", type="person", name="Paree", canonical_name="Paris",
+             created_at="2026-07-26T10:00:00Z"),
+    ])
+    rp = [c for c in dream_candidates(a, since="2026-07-25")
+          if c.reason == "recent-pair"]
+    assert any(set(c.node_ids) == {"u:person:a", "u:person:b"} for c in rp)
+
+
+def test_recent_pair_excludes_both_timestamps_old(tmp_path):
+    a = SQLiteAdapter(tmp_path / "kg.db")
+    a.upsert_nodes([
+        Node(id="u:person:a", type="person", name="Paris", canonical_name="Paris",
+             created_at="2020-01-01T00:00:00Z",
+             updated_at="2020-06-01T00:00:00Z"),
+        Node(id="u:person:b", type="person", name="Paree", canonical_name="Paris",
+             created_at="2020-01-01T00:00:00Z"),
+    ])
+    rp = [c for c in dream_candidates(a, since="2026-07-25")
+          if c.reason == "recent-pair"]
+    assert len(rp) == 0
