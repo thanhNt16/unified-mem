@@ -429,30 +429,34 @@ Each skill = `SKILL.md` (workflow + when-to-trigger, "pushy" description) + `ref
 
 ## 15. Distribution & One-Line Install
 
-The whole stack — build from source, install globally, and auto-configure one harness — is one command. This command is also the entry point every integration test calls.
+The whole stack — build from source, install globally, and auto-configure one harness — is one command run from **this repository checkout**. There is no remote repo / hosted script in v1; the bootstrap builds the local tree. This command is also the entry point every integration test calls.
 
-### 15.1 One-line bootstrap
-
-```
-curl -fsSL https://<raw>/kg/install.sh | bash -s -- [harness]
-```
-
-- No args, or `--harness claude` → **Claude Code** (default).
-- `--harness cursor` → Cursor. (Codex/OpenCode accepted but not first-class-tested in v1.)
-- Does, in order: clone/verify source → build wheel → `uv tool install kg` (puts `kg` on PATH globally, isolated env) → `kg install <harness>` (writes skills + MCP entry + instruction stanza + hooks into the target harness config) → `kg init` in cwd → prints a smoke result + the exact paths it wrote.
-
-### 15.2 Build from source (no curl)
+### 15.1 One-line bootstrap (from this directory)
 
 ```
-git clone <kg> && cd kg && make install HARNESS=claude
-# = uv sync && uv build && uv tool install ./dist/kg-*.whl && kg install claude && kg init
+make install            # default harness: claude code
+make install H=cursor   # cursor
 ```
 
-`make` targets: `install` (full bootstrap), `build` (wheel only), `dev` (editable + run from checkout), `uninstall`, `test`, `bench`. Idempotent — re-running upgrades in place.
+- `make install` → **Claude Code** (default).
+- `make install H=cursor` → Cursor. (Codex/OpenCode accepted via `kg install`, not first-class-tested in v1.)
+- `make install` expands to:
+  ```
+  uv sync && uv build && uv tool install ./dist/kg-*.whl && kg install ${H:-claude} && kg init
+  ```
+  i.e. resolve deps from the local tree → build the wheel from source → `uv tool install` (puts `kg` on PATH globally in an isolated env) → `kg install <harness>` (writes skills + MCP entry + instruction stanza + hooks into the target harness config) → `kg init` in cwd → prints a smoke result + the exact paths it wrote.
 
-### 15.3 `kg install` contract (what the one-liner delegates to)
+Prereqs: `uv` and the target harness installed. The Makefile detects a missing `uv` and prints the one-liner to install it.
 
-`kg install [harness] [--all]` writes, for the chosen harness: the 4 skills into its skills dir, an MCP stdio entry pointing at `kg mcp serve`, an instruction/`AGENTS.md` stanza, and the continual-learning hook (e.g. Claude Code `SessionEnd`). It must be **re-runnable and diff-friendly** — it merges into existing config rather than clobbering, and `kg install --uninstall` reverses exactly what it wrote. This is what makes the bootstrap testable and reversible.
+### 15.2 Other `make` targets
+
+`make build` (wheel only, no install), `make dev` (editable install + run from checkout — for working on `kg` itself), `make uninstall` (`uv tool uninstall kg` + `kg install --uninstall`), `make test`, `make bench`. All idempotent — re-running upgrades in place.
+
+### 15.3 `kg install` contract (what `make install` delegates to)
+
+`kg install [harness] [--all] [--uninstall]` writes, for the chosen harness: the 4 skills into its skills dir, an MCP stdio entry pointing at `kg mcp serve`, an instruction/`AGENTS.md` stanza, and the continual-learning hook (e.g. Claude Code `SessionEnd`). It must be **re-runnable and diff-friendly** — it merges into existing config rather than clobbering, and `--uninstall` reverses exactly what it wrote. This is what makes the bootstrap testable and reversible.
+
+> **Future:** once a remote exists, a `curl … | bash` wrapper will simply `git clone` and run `make install` from the checkout — so nothing here assumes remote hosting, it just adds a fetch step in front.
 
 ---
 
@@ -462,13 +466,13 @@ End-to-end tests that exercise the *real distribution path* and a *real harness 
 
 ### 16.1 Bootstrap test (all harnesses, v1)
 
-Calls the one-line command in a throwaway temp project, asserts `kg` is on PATH, `.kg/` is initialized, and `kg status` is green. This is the cheap gate that runs on every CI push and proves install works for every supported harness without spawning a session.
+Calls `make install H=<harness>` (from a clean checkout, in a throwaway temp project) and asserts `kg` is on PATH, `.kg/` is initialized, and `kg status` is green. This is the cheap gate that runs on every CI push and proves install works for every supported harness without spawning a session.
 
 ### 16.2 Live-session E2E test (Claude Code + Cursor, v1)
 
 The serious test. For each of the two first-class harnesses:
 
-1. **Bootstrap fresh** via the one-line command in an isolated temp dir (captive git repo).
+1. **Bootstrap fresh** via `make install H=<harness>` in an isolated temp dir (a clean checkout of this repo).
 2. **Seed** a small corpus (3 sources: one URL, one PDF, one pasted text) known to produce a measurable graph (N nodes, ≥1 cross-doc edge, ≥1 gray-zone pair).
 3. **Spawn a new harness session** against that dir, headless:
    - Claude Code: `claude -p` (print/non-interactive) in a PTY, with the installed plugin + `kg` on PATH.
