@@ -1,0 +1,30 @@
+{
+  "nodes": [
+    {"type": "person", "name": "Demis Hassabis", "summary": "British AI researcher; co-founder of DeepMind, CEO of Google DeepMind"},
+    {"type": "person", "name": "John Jumper", "summary": "Led AlphaFold 2 team at DeepMind"},
+    {"type": "organization", "name": "DeepMind", "summary": "London-based AI lab founded 2010"},
+    {"type": "organization", "name": "Google DeepMind", "summary": "Merged entity of DeepMind and Google Brain (2024)"},
+    {"type": "organization", "name": "Google", "summary": "Parent company; merged DeepMind with Google Brain"},
+    {"type": "location", "name": "London", "summary": "Headquarters location of DeepMind"},
+    {"type": "object", "name": "AlphaFold", "summary": "Protein structure prediction system"},
+    {"type": "object", "name": "AlphaGo", "summary": "Go-playing AI by DeepMind"},
+    {"type": "person", "name": "D. Hassabis", "summary": "Gray-zone alias candidate for Demis Hassabis"}
+  ],
+  "edges": [
+    {"source_name": "Demis Hassabis", "semantic_type": "employed_by", "target_name": "Google DeepMind", "summary": "leads", "confidence": 0.9},
+    {"source_name": "Demis Hassabis", "semantic_type": "employed_by", "target_name": "DeepMind", "summary": "co-founded 2010", "confidence": 0.9},
+    {"source_name": "John Jumper", "semantic_type": "employed_by", "target_name": "DeepMind", "summary": "AlphaFold lead", "confidence": 0.85},
+    {"source_name": "DeepMind", "semantic_type": "located_at", "target_name": "London", "summary": "headquartered in London", "confidence": 0.95},
+    {"source_name": "AlphaFold", "semantic_type": "related_to", "target_name": "DeepMind", "summary": "developed by DeepMind", "confidence": 0.9},
+    {"source_name": "AlphaGo", "semantic_type": "related_to", "target_name": "DeepMind", "summary": "developed by DeepMind", "confidence": 0.9},
+    {"source_name": "Google DeepMind", "semantic_type": "alias_of", "target_name": "DeepMind", "summary": "merged successor", "confidence": 0.8},
+    {"source_name": "D. Hassabis", "semantic_type": "same_as", "target_name": "Demis Hassabis", "summary": "gray-zone pair", "confidence": 0.7}
+  ],
+  "facts": [
+    {"subject": "AlphaFold Nature paper", "predicate": "published_in", "object": "Nature 2021"},
+    {"subject": "DeepMind founding year", "predicate": "equals", "object": "2010"}
+  ],
+  "preferences": [
+    {"name": "open_science", "subject": "DeepMind", "summary": "prefers open release of scientific software and datasets", "attributes": {"topic": "open_science"}}
+  ]
+}

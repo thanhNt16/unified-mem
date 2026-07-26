@@ -1,0 +1,49 @@
+{
+  "cli_deterministic": {
+    "description": "Exact shape when gate processes extracted.json via FakeEmbedder (no dedup hits).",
+    "nodes_total": 12,
+    "edges_total": 8,
+    "nodes_by_type": {
+      "person": 3,
+      "organization": 3,
+      "location": 1,
+      "object": 2,
+      "fact": 2,
+      "preference": 1
+    },
+    "edges_by_semantic_type": {
+      "employed_by": 3,
+      "located_at": 1,
+      "related_to": 2,
+      "alias_of": 1,
+      "same_as": 1
+    },
+    "canonical_entities": [
+      "Demis Hassabis",
+      "John Jumper",
+      "DeepMind",
+      "Google DeepMind",
+      "London",
+      "AlphaFold"
+    ],
+    "decisions": {
+      "NEW": 12,
+      "MERGED": 0,
+      "FLAGGED": 0
+    }
+  },
+  "llm_band": {
+    "description": "Loose bands for live-LLM extraction runs (model-dependent).",
+    "min_nodes": 6,
+    "min_edges": 3,
+    "must_contain_entities": [
+      "Demis Hassabis",
+      "DeepMind",
+      "London",
+      "AlphaFold"
+    ],
+    "must_contain_types": ["person", "organization", "object"],
+    "cross_doc_entity": "Demis Hassabis",
+    "gray_zone_pair": ["D. Hassabis", "Demis Hassabis"]
+  }
+}
