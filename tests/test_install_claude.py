@@ -7,6 +7,7 @@ import pytest
 
 from kg.install.claude import (
     MARKER_BEGIN,
+    MARKER_END,
     STANZA,
     InstallConflict,
     apply_plan,
@@ -345,3 +346,43 @@ def test_default_install_is_read_only(tmp_path):
     expected_argv = ["mcp", "serve", "--project-root", str(project)]
     assert mcp["mcpServers"]["kg"]["args"] == expected_argv
     assert "--allow-writes" not in mcp["mcpServers"]["kg"]["args"]
+
+
+def test_marker_drift_force_replaces_only_kg_block_preserving_user_content(tmp_path):
+    """Drifted marker block: --force rewrites only the kg-owned block, preserves user text."""
+    home, project, skills = roots(tmp_path)
+    (project / "CLAUDE.md").write_text(
+        "# user prefix\n"
+        f"{MARKER_BEGIN}\nTAMPERED\n{MARKER_END}\n"
+        "# user suffix\n",
+        encoding="utf-8",
+    )
+    planned = plan_claude_install(project, home, skills_src=skills, force=True)
+    apply_plan(planned)
+    text = (project / "CLAUDE.md").read_text()
+    assert text.startswith("# user prefix\n")
+    assert text.endswith("# user suffix\n")
+    assert "TAMPERED" not in text
+    assert "## Local knowledge graph" in text
+
+
+def test_orphan_kg_mcp_force_reclaims_entry(tmp_path):
+    """Orphan kg MCP entry (command=kg, no manifest) reclaimed under --force."""
+    home, project, skills = roots(tmp_path)
+    (project / ".mcp.json").write_text(json.dumps({
+        "mcpServers": {"kg": {"command": "kg", "args": ["old"]}},
+    }))
+    planned = plan_claude_install(project, home, skills_src=skills, force=True, allow_writes=True)
+    apply_plan(planned)
+    mcp = json.loads((project / ".mcp.json").read_text())
+    assert mcp["mcpServers"]["kg"]["args"][-1] == "--allow-writes"
+
+
+def test_foreign_mcp_still_refuses_with_force(tmp_path):
+    """Foreign entry (command != kg) still refuses under --force."""
+    home, project, skills = roots(tmp_path)
+    (project / ".mcp.json").write_text(json.dumps({
+        "mcpServers": {"kg": {"command": "other-tool", "args": []}},
+    }))
+    with pytest.raises(InstallConflict, match="foreign entry"):
+        plan_claude_install(project, home, skills_src=skills, force=True)

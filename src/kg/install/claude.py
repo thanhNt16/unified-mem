@@ -232,16 +232,22 @@ def plan_claude_install(
         + (["--allow-writes"] if allow_writes else []),
     }
     old_mcp = servers.get(MCP_NAME, _MISSING)
-    # kg-owned key whose argv changed (e.g. toggling --allow-writes on a prior
-    # install) is an upgrade, not a foreign collision — force overwrites it.
-    # A genuinely foreign entry (no kg manifest ownership) still refuses.
+    # An entry whose command is "kg" is kg-related (manifest-owned or orphaned
+    # from a prior/failed install). --force upgrades/reclaims it. A genuinely
+    # foreign entry (different command) refuses even under --force.
+    looks_kg = isinstance(old_mcp, dict) and old_mcp.get("command") == "kg"
+    can_force_overwrite = manifest is not None or looks_kg
     if old_mcp != _MISSING and old_mcp != wanted_mcp:
-        if not (force and manifest is not None):
-            raise InstallConflict(
-                f"MCP server name collision at {MCP_NAME!r}: {mcp_path}"
-                + ("; use force to overwrite kg-owned entry" if manifest is not None else "")
+        if not force or not can_force_overwrite:
+            hint = (
+                "; use --force to overwrite the kg-related entry"
+                if can_force_overwrite
+                else " (foreign entry; remove or rename it in .mcp.json first)"
             )
-    if old_mcp == _MISSING or (force and manifest is not None and old_mcp != wanted_mcp):
+            raise InstallConflict(
+                f"MCP server name collision at {MCP_NAME!r}: {mcp_path}{hint}"
+            )
+    if old_mcp == _MISSING or (force and can_force_overwrite and old_mcp != wanted_mcp):
         updated = dict(mcp)
         updated_servers = dict(servers)
         updated_servers[MCP_NAME] = wanted_mcp
@@ -306,11 +312,25 @@ def plan_claude_install(
         start, end = text.index(MARKER_BEGIN), text.index(MARKER_END)
         if start > end or MARKER_BEGIN in text[start + len(MARKER_BEGIN):end]:
             raise InstallConflict(f"Malformed or nested kg ownership markers: {instructions_path}")
-        existing = text[start:end + len(MARKER_END)] + (
-            "\n" if text[end + len(MARKER_END):].startswith("\n") else ""
+        block_end = end + len(MARKER_END)
+        existing = text[start:block_end] + (
+            "\n" if text[block_end:].startswith("\n") else ""
         )
         if existing.encode() != STANZA:
-            raise InstallConflict(f"Owned marker block has drifted: {instructions_path}")
+            if not force:
+                raise InstallConflict(
+                    f"Owned marker block has drifted: {instructions_path}; use --force to replace only the kg-owned block"
+                )
+            suffix_start = block_end + (1 if text[block_end:].startswith("\n") else 0)
+            plan.writes.append(
+                PlannedWrite(
+                    instructions_path,
+                    (text[:start].encode() + STANZA + text[suffix_start:].encode()),
+                    project,
+                    ArtifactKind.MARKER_BLOCK,
+                    ownership_marker=f"{MARKER_BEGIN}…{MARKER_END}",
+                )
+            )
     else:
         separator = b"" if not original or original.endswith(b"\n") else b"\n"
         plan.writes.append(
