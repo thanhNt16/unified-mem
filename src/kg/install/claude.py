@@ -185,12 +185,15 @@ def plan_claude_install(
     manifest = _owned_manifest(project)
     plan = InstallPlan(project, home, source, force, existing_manifest=manifest)
     claude_root = home / ".claude"
-    skill_root = claude_root / "skills" / "kg"
+    # Skills are project-local + flat: <project>/.claude/skills/<name>/SKILL.md.
+    # Claude Code discovers skills with a flat glob; a `kg/` namespace subdir would
+    # hide them, and project-local scope matches the per-project `.kg/` model.
+    skill_root = project / ".claude" / "skills"
     mcp_path = home / ".claude.json"
     settings_path = claude_root / "settings.json"
     instructions_path = project / "CLAUDE.md"
     for target, root in (
-        (skill_root, home),
+        (skill_root, project),
         (mcp_path, home),
         (settings_path, home),
         (instructions_path, project),
@@ -206,7 +209,7 @@ def plan_claude_install(
         _contained(src, source)
         _tree_hash(src)
         dest = skill_root / name
-        _validate_target(dest, home)
+        _validate_target(dest, project)
         if dest.exists():
             if _same_tree(src, dest):
                 continue
@@ -214,9 +217,9 @@ def plan_claude_install(
                 raise InstallConflict(
                     f"Skill destination exists with different content: {dest}; use force to back it up"
                 )
-            plan.skills.append(PlannedSkill(src, dest, home, replace=True))
+            plan.skills.append(PlannedSkill(src, dest, project, replace=True))
         else:
-            plan.skills.append(PlannedSkill(src, dest, home))
+            plan.skills.append(PlannedSkill(src, dest, project))
 
     mcp, _ = _json(mcp_path)
     servers = mcp.get("mcpServers", {})

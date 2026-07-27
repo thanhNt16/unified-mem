@@ -73,7 +73,7 @@ def _owned_file(harness: str, tmp_path: Path) -> Path:
     project = tmp_path / "project"
     home = tmp_path / "home"
     if harness == "claude":
-        return home / ".claude" / "skills" / "kg" / "kg-query" / "SKILL.md"
+        return project / ".claude" / "skills" / "kg-query" / "SKILL.md"
     if harness == "codex":
         return project / ".codex" / "config.toml"
     if harness == "opencode":

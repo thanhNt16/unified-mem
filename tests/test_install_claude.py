@@ -63,7 +63,7 @@ def test_apply_exact_expected_and_manifest_ownership(tmp_path):
     assert (project / ".kg" / "sessions").is_dir()
     assert STANZA == (project / "CLAUDE.md").read_bytes()
     for name in ("kg-extract", "kg-query", "kg-dream"):
-        assert (home / ".claude/skills/kg" / name / "SKILL.md").read_text() == name
+        assert (project / ".claude/skills" / name / "SKILL.md").read_text() == name
     loaded = load_manifest(project)
     assert loaded.transaction_state.value == "committed"
     assert {a.kind for a in loaded.artifacts} == {
@@ -139,7 +139,7 @@ def test_marker_malformed_or_nested_refuses(tmp_path, contents):
 
 def test_skill_conflict_requires_force_and_backup(tmp_path):
     home, project, skills = roots(tmp_path)
-    target = home / ".claude/skills/kg/kg-query"
+    target = project / ".claude/skills/kg-query"
     target.mkdir(parents=True)
     (target / "SKILL.md").write_text("user")
     with pytest.raises(InstallConflict, match="use force"):
@@ -151,7 +151,7 @@ def test_skill_conflict_requires_force_and_backup(tmp_path):
 
 def test_force_skill_replace_failure_restores_user_directory(tmp_path, monkeypatch):
     home, project, skills = roots(tmp_path)
-    target = home / ".claude/skills/kg/kg-query"
+    target = project / ".claude/skills/kg-query"
     target.mkdir(parents=True)
     (target / "SKILL.md").write_text("user")
     (target / "nested").mkdir()
@@ -188,7 +188,7 @@ def test_force_skill_replace_failure_restores_user_directory(tmp_path, monkeypat
 
 def test_force_skill_post_copy_failure_restores_user_directory(tmp_path, monkeypatch):
     home, project, skills = roots(tmp_path)
-    target = home / ".claude/skills/kg/kg-query"
+    target = project / ".claude/skills/kg-query"
     target.mkdir(parents=True)
     (target / "SKILL.md").write_text("user")
     planned = plan_claude_install(project, home, skills_src=skills, force=True)
@@ -244,7 +244,7 @@ def test_atomic_failure_rolls_back(tmp_path, monkeypatch):
         apply_plan(planned)
     assert not (home / ".claude.json").exists()
     assert not (project / ".kg-install-manifest.json").exists()
-    assert not (home / ".claude/skills/kg/kg-extract").exists()
+    assert not (project / ".claude/skills/kg-extract").exists()
 
 
 def test_uninstall_restores_exact_and_preserves_user_additions(tmp_path):
@@ -274,7 +274,7 @@ def test_uninstall_restores_exact_and_preserves_user_additions(tmp_path):
 def test_drift_refusal_preserves_everything(tmp_path):
     home, project, planned = plan(tmp_path)
     manifest = apply_plan(planned)
-    skill = home / ".claude/skills/kg/kg-query/SKILL.md"
+    skill = project / ".claude/skills/kg-query/SKILL.md"
     skill.write_text("edited")
     mcp_before = (home / ".claude.json").read_bytes()
     with pytest.raises(InstallConflict, match="drift"):

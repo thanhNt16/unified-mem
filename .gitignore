@@ -8,3 +8,9 @@ build/
 htmlcov/
 .kg/kg.db
 .kg/kg.db-*
+
+# agent worktrees + local kg store (never commit)
+.claude/worktrees/
+.kg/
+.DS_Store
+bench/results/

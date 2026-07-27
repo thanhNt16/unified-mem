@@ -57,7 +57,7 @@ def _has_claude_config(home: Path, project: Path) -> None:
     assert instructions.is_file(), f"missing {instructions}"
     assert "kg-install:claude:begin" in instructions.read_text()
     for name in common.SKILLS:
-        assert (home / ".claude" / "skills" / "kg" / name / "SKILL.md").is_file()
+        assert (project / ".claude" / "skills" / name / "SKILL.md").is_file()
 
 
 def _has_codex_config(home: Path, project: Path) -> None:

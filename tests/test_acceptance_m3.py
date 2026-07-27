@@ -89,7 +89,7 @@ def test_m3_install_mcp_hook_uninstall_roundtrip(tmp_path, monkeypatch):
     claude_json = home / ".claude.json"
     settings = home / ".claude" / "settings.json"
     instructions = project / "CLAUDE.md"
-    assert all((home / ".claude" / "skills" / "kg" / name / "SKILL.md").is_file()
+    assert all((project / ".claude" / "skills" / name / "SKILL.md").is_file()
                for name in ("kg-extract", "kg-query", "kg-dream"))
     assert "kg" in json.loads(claude_json.read_text())["mcpServers"]
     assert json.loads(settings.read_text())["hooks"]["SessionEnd"]
@@ -197,7 +197,7 @@ def test_m3_uninstall_refuses_owned_drift(tmp_path, monkeypatch):
     _init(project)
     installed = runner.invoke(app, ["install", "claude", "--apply", "--project-root", str(project), "--home-root", str(home), "--skills-src", str(SKILLS_SRC)])
     _assert_ok(installed)
-    owned = home / ".claude" / "skills" / "kg" / "kg-query" / "SKILL.md"
+    owned = project / ".claude" / "skills" / "kg-query" / "SKILL.md"
     owned.write_text(owned.read_text() + "manual drift\n", encoding="utf-8")
     refused = runner.invoke(app, ["install", "claude", "--uninstall", "--project-root", str(project), "--home-root", str(home)])
     assert refused.exit_code != 0, f"exit={refused.exit_code}\nexception={refused.exception!r}\noutput={refused.output}\nstderr={refused.stderr}"
