@@ -17,6 +17,18 @@ SKILLS = ("kg-extract", "kg-query", "kg-dream")
 MCP_ARGV = ("kg", "mcp", "serve", "--project-root")
 _MISSING = {"__kg_install_missing__": True}
 
+# Bundled skills ship inside the installed package so `kg install` works on
+# foreign projects without a local `skills/` checkout.
+_BUNDLED_SKILLS = Path(__file__).resolve().parent.parent / "skills"
+
+
+def default_skills_src(project: Path) -> Path:
+    """Resolve skills source: explicit arg > <project>/skills > bundled."""
+    local = project / "skills"
+    if local.is_dir():
+        return local
+    return _BUNDLED_SKILLS
+
 class InstallConflict(RuntimeError):
     pass
 

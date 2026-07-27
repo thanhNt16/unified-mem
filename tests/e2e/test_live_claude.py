@@ -35,7 +35,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 EXTRACTED = FIXTURES / "extracted.json"
 GOLDEN = FIXTURES / "golden.json"
-SKILLS_SRC = REPO_ROOT / "skills"
+SKILLS_SRC = REPO_ROOT / "src" / "kg" / "skills"
 
 
 def _load_golden():

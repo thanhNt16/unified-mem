@@ -34,7 +34,7 @@ def _manual(project: Path) -> str:
 
 def plan_opencode_install(project_root: Path, home_root: Path, *, skills_src: Path | None = None) -> InstallPlan:
     project, home = common.validate_roots(project_root, home_root)
-    source = Path(skills_src or project / "skills").resolve(strict=True)
+    source = Path(skills_src or common.default_skills_src(project)).resolve(strict=True)
     plan = InstallPlan(Harness.OPENCODE, project, home,
                        existing_manifest=common.owned_manifest(project, Harness.OPENCODE))
     config, jsonc = project / CONFIG_REL, project / JSONC_REL

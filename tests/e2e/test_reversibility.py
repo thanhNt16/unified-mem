@@ -31,7 +31,7 @@ from kg.cli.main import app
 from kg.install.manifest import manifest_path
 
 runner = CliRunner()
-SKILLS_SRC = Path(__file__).resolve().parent.parent.parent / "skills"
+SKILLS_SRC = Path(__file__).resolve().parent.parent.parent / "src" / "kg" / "skills"
 
 HARNESSES = ["claude", "codex", "opencode", "cursor", "agents"]
 

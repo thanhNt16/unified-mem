@@ -49,8 +49,10 @@ Defaults are cwd and `$HOME`. `--project-root` must contain a `.kg/` directory.
 kg install claude --apply --skills-src /abs/path/to/skills
 ```
 
-Default skills source is `<project>/skills`. Use this when shipping a packaged
-copy of the skills alongside a forked harness.
+Default skills source resolution: `<project>/skills` if present, else the
+bundled skills shipped inside the `kg` package. The bundled copy makes
+`kg install` work on any project without checking out the skills repo. Use
+`--skills-src` only when shipping a forked copy alongside a custom harness.
 
 ## MCP server
 

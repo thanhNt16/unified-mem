@@ -68,7 +68,7 @@ def _render_manual_patch(project: Path) -> str:
 
 def plan_codex_install(project_root: Path, home_root: Path, *, skills_src: Path | None = None) -> InstallPlan:
     project, _ = common.validate_roots(project_root, home_root)
-    source = Path(skills_src or project / "skills").resolve(strict=True)
+    source = Path(skills_src or common.default_skills_src(project)).resolve(strict=True)
     plan = InstallPlan(harness=Harness.CODEX, project_root=project, home_root=project,
                        existing_manifest=common.owned_manifest(project, Harness.CODEX))
 

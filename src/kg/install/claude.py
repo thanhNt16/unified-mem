@@ -16,6 +16,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
+from . import common
 from .manifest import (
     ArtifactKind,
     Harness,
@@ -178,7 +179,7 @@ def plan_claude_install(
     """Build a deterministic, read-only Claude Code installation plan."""
     project = Path(project_root).resolve(strict=True)
     home = Path(home_root).resolve(strict=True)
-    source = Path(skills_src or project / "skills").resolve(strict=True)
+    source = Path(skills_src or common.default_skills_src(project)).resolve(strict=True)
     if not project.is_dir() or not home.is_dir() or not source.is_dir():
         raise InstallConflict("project_root, home_root, and skills_src must be directories")
 

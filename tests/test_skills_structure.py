@@ -1,7 +1,7 @@
 # tests/test_skills_structure.py
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1] / "skills"
+ROOT = Path(__file__).resolve().parents[1] / "src" / "kg" / "skills"
 
 
 def test_extract_skill_exists_and_bounded():

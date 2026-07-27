@@ -14,3 +14,11 @@ htmlcov/
 .kg/
 .DS_Store
 bench/results/
+
+# local kg install artifacts (project-scoped; never commit)
+.mcp.json
+.claude/settings.json
+.claude/skills/
+CLAUDE.md
+.kg-install-manifest.json
+.kg-install-backups/

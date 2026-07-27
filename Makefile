@@ -15,7 +15,7 @@ test:          ## run the test suite (deterministic; live-session tier lives in 
 
 install:       ## full bootstrap: build + global tool install + kg install + kg init
 	uv sync && uv build && uv tool install ./dist/$(PKG)-*.whl --force && \
-		kg install $(H) --apply --skills-src $(CURDIR)/skills && kg init
+		kg install $(H) --apply --skills-src $(CURDIR)/src/kg/skills && kg init
 
 uninstall:     ## reverse of install
 	-kg install --uninstall $(H)

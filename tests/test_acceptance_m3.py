@@ -19,7 +19,7 @@ from kg.install.manifest import manifest_path
 from kg.paths import KgPaths
 
 runner = CliRunner()
-SKILLS_SRC = Path(__file__).resolve().parent.parent / "skills"
+SKILLS_SRC = Path(__file__).resolve().parent.parent / "src" / "kg" / "skills"
 
 
 def _assert_ok(result):

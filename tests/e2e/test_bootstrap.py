@@ -20,7 +20,7 @@ from kg.install.manifest import Harness, manifest_path
 HARNESSES: list[str] = [h.value for h in Harness]
 runner = CliRunner()
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-SKILLS_SRC = REPO_ROOT / "skills"
+SKILLS_SRC = REPO_ROOT / "src" / "kg" / "skills"
 
 
 def _seed_skills(parent: Path) -> Path:
