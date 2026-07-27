@@ -174,6 +174,7 @@ def plan_claude_install(
     *,
     skills_src: Path | None = None,
     force: bool = False,
+    allow_writes: bool = False,
 ) -> InstallPlan:
     """Build a deterministic, read-only Claude Code installation plan."""
     project = Path(project_root).resolve(strict=True)
@@ -227,7 +228,8 @@ def plan_claude_install(
         raise InstallConflict(f"mcpServers must be an object: {mcp_path}")
     wanted_mcp = {
         "command": "kg",
-        "args": ["mcp", "serve", "--project-root", str(project)],
+        "args": ["mcp", "serve", "--project-root", str(project)]
+        + (["--allow-writes"] if allow_writes else []),
     }
     old_mcp = servers.get(MCP_NAME, _MISSING)
     if old_mcp != _MISSING and old_mcp != wanted_mcp:

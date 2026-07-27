@@ -298,3 +298,22 @@ def test_modes_preserved(tmp_path):
     assert stat.S_IMODE(mcp.stat().st_mode) == 0o600
     assert stat.S_IMODE(settings.stat().st_mode) == 0o640
     assert stat.S_IMODE(instructions.stat().st_mode) == 0o664
+
+
+def test_allow_writes_flag_adds_mcp_arg(tmp_path):
+    """Bug 2: allow_writes=True adds --allow-writes to MCP argv in .mcp.json."""
+    home, project, planned = plan(tmp_path, allow_writes=True)
+    manifest = apply_plan(planned)
+    mcp = json.loads((project / ".mcp.json").read_text())
+    expected_argv = ["mcp", "serve", "--project-root", str(project), "--allow-writes"]
+    assert mcp["mcpServers"]["kg"]["args"] == expected_argv
+
+
+def test_default_install_is_read_only(tmp_path):
+    """Bug 2: Default install does NOT include --allow-writes."""
+    home, project, planned = plan(tmp_path)
+    manifest = apply_plan(planned)
+    mcp = json.loads((project / ".mcp.json").read_text())
+    expected_argv = ["mcp", "serve", "--project-root", str(project)]
+    assert mcp["mcpServers"]["kg"]["args"] == expected_argv
+    assert "--allow-writes" not in mcp["mcpServers"]["kg"]["args"]

@@ -148,6 +148,8 @@ Resume reads this line and picks up at chunk 3 (retry) or chunk 5 (next undone).
 
 `kg save` takes a process-wide file lock on `kg.db` and queues writes (SQLite WAL, one writer). You may run multiple chunk extractions in parallel; they will serialize at save. Cross-process blind spots (two processes see the same gray-zone pair before either commits) are caught later by `/kg-dream`'s RECENT-PAIR job — do NOT try to handle them in extract.
 
+**No MCP writes during extract.** The kg MCP server is read-only by default (`allow_writes=False`). Do not call `save_pole` or any other MCP write tools during extract. To enable MCP writes, reinstall with `kg install claude --allow-writes` (opt-in, not recommended for extract workloads).
+
 ## Failure modes
 
 - **Schema violation** (unknown type / dangling edge endpoint) → retry with validator error (max 2), then checkpoint `failed` and continue.

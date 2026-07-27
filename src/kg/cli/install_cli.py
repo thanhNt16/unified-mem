@@ -111,6 +111,7 @@ def _do_one(
     skills_src: Optional[Path],
     apply: bool,
     force: bool,
+    allow_writes: bool,
     uninstall: bool,
 ) -> int:
     name = harness.value
@@ -132,6 +133,7 @@ def _do_one(
             kwargs["skills_src"] = skills_src
         if harness is Harness.CLAUDE:
             kwargs["force"] = force
+            kwargs["allow_writes"] = allow_writes
         plan = _PLANNERS[harness](project, home, **kwargs)
         _print_plan(name, plan)
         if apply:
@@ -169,6 +171,11 @@ def install(
         False,
         "--force",
         help="Conflict override; honored by claude only. Never bypasses drift checks.",
+    ),
+    allow_writes: bool = typer.Option(
+        False,
+        "--allow-writes",
+        help="Grant MCP server write access (default: read-only). Claude only."
     ),
     uninstall: bool = typer.Option(
         False, "--uninstall", help="Load manifest and remove owned fragments."
@@ -232,4 +239,4 @@ def install(
             err=True,
         )
         raise typer.Exit(2)
-    raise typer.Exit(_do_one(target, project, home, skills_src, apply, force, uninstall))
+    raise typer.Exit(_do_one(target, project, home, skills_src, apply, force, allow_writes, uninstall))

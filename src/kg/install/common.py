@@ -151,8 +151,12 @@ def dump_json(value: dict[str, Any]) -> bytes:
     return (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode()
 
 
-def mcp_argv(project: Path) -> list[str]:
-    return [*MCP_ARGV, str(project)]
+def mcp_argv(project: Path, *, allow_writes: bool = False) -> list[str]:
+    """Build MCP server argv with optional write access (Bug 2)."""
+    argv = [*MCP_ARGV, str(project)]
+    if allow_writes:
+        argv.append("--allow-writes")
+    return argv
 
 
 def add_json_mcp(plan: InstallPlan, path: Path, top_key: str, value: dict[str, Any]) -> None:
