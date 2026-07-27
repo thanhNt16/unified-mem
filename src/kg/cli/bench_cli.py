@@ -55,9 +55,18 @@ def bench_cli(
         out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    from bench.corpus import make_corpus_at_scale
-    from bench.reporter import render_report
-    from bench.runners import QUERIES, run_baseline, run_kg
+    try:
+        from bench.corpus import make_corpus_at_scale
+        from bench.reporter import render_report
+        from bench.runners import QUERIES, run_baseline, run_kg
+    except ModuleNotFoundError as e:
+        typer.echo(
+            "Error: the benchmark harness (the `bench` package) is not importable. "
+            "`kg bench` is a developer/CI tool that ships with the kg source checkout. "
+            "Run it via `make bench` from the repository root, or set PYTHONPATH to the checkout.",
+            err=True,
+        )
+        raise typer.Exit(2) from e
 
     if corpus_dir is None:
         corpus_base = out_dir / "corpus"

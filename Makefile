@@ -24,5 +24,5 @@ uninstall:     ## reverse of install
 clean:
 	rm -rf dist build *.egg-info
 
-bench:          ## run deterministic benchmark (CI-safe 10-doc tier)
-	uv run kg bench --scale 10
+bench:          ## run deterministic benchmark (CI-safe 10-doc tier); requires repo checkout (bench harness lives in ./bench)
+	PYTHONPATH=$(CURDIR) uv run kg bench --scale 10
