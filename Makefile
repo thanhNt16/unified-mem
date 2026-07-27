@@ -10,7 +10,7 @@ dev:           ## editable install for working on kg itself
 build:         ## build the wheel into dist/
 	uv build
 
-test:          ## run the test suite
+test:          ## run the test suite (deterministic; live-session tier lives in .github/workflows/test.yml)
 	uv run pytest
 
 install:       ## full bootstrap: build + global tool install + kg install + kg init

@@ -22,6 +22,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.e2e.assertions import kg_tool_json_equal
+
 
 # -- Deterministic seed data --------------------------------------------------
 
@@ -126,28 +128,8 @@ def _kill(proc: subprocess.Popen) -> None:
 
 
 # -- Structural equality for kg tool JSON ------------------------------------
-
-
-def kg_tool_json_equal(a: dict, b: dict) -> bool:
-    """Assert two kg tool responses are structurally equal.
-
-    Compares: node-id sets, edge counts, expansion ids.
-    Ignores: score ordering (keyword FTS varies by platform tokenizer),
-    embedding vectors (never in responses), field ordering.
-    """
-    return _struct_equal(a, b)
-
-
-def _struct_equal(a, b, _path="root") -> bool:
-    if isinstance(a, dict) and isinstance(b, dict):
-        if set(a.keys()) != set(b.keys()):
-            return False
-        return all(_struct_equal(a[k], b[k], f"{_path}.{k}") for k in a)
-    if isinstance(a, list) and isinstance(b, list):
-        if len(a) != len(b):
-            return False
-        return all(_struct_equal(x, y, f"{_path}[]") for x, y in zip(a, b))
-    return a == b
+# ``kg_tool_json_equal`` comes from assertions.py. Its shared unstable-field
+# policy ignores score/distance/embedding/timestamps consistently across E2E.
 
 
 def _normalize_search(content: dict) -> dict:
@@ -180,7 +162,7 @@ def shared_kg(tmp_path_factory):
     root = tmp_path_factory.mktemp("portability") / "proj"
     root.mkdir()
 
-    # Seed via subprocess to avoid leaking FakeEmbedder ONNX state into test.
+    # Subprocess isolates the seeded kg.db and avoids in-process state sharing.
     result = subprocess.run(
         [sys.executable, "-c", SEED_SCRIPT, str(root),
          json.dumps(SEED_NODES), json.dumps(SEED_EDGES), SOURCE],

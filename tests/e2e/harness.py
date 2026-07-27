@@ -1,4 +1,4 @@
-"""SessionDriver ABC and clean-env builder for E2E distribution tests.
+"""SessionDriver ABC + MCP stdio helpers for E2E distribution tests.
 
 Determinism contract:
   - This library spawns NO LLM and reads no model output. The driver
@@ -12,16 +12,25 @@ Context manager protocol:
     with SomeDriver(project_root, home_root=tmp, api_key=k) as drv:
         drv.send("hello")
         drv.wait_for(lambda: graph_has_nodes(drv.project_root, 1))
+
+MCP stdio helpers:
+    proc, client = mcp_stdio_session(argv, cwd=..., env=...)
+    client.initialize(); client.call_tool("search_memory", {...})
+
+ponytail: no streaming/async in McpStdioClient. Add: when a second transport
+(websocket) lands, factor McpStdioSession out. Until then one function is enough.
 """
 from __future__ import annotations
 
+import json
 import os
+import select
 import signal
 import subprocess
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 
 class CleanEnvError(RuntimeError):
@@ -46,6 +55,7 @@ def build_clean_env(
     *,
     api_key: str | None = None,
     extra_path: list[Path] | None = None,
+    include_secrets: bool = False,
 ) -> dict[str, str]:
     """Build a minimal env: only PATH, HOME, and (if given) ANTHROPIC_API_KEY.
 
@@ -57,6 +67,9 @@ def build_clean_env(
         home_root: directory to use as HOME for the spawned process.
         api_key: optional Anthropic API key. Stored under ANTHROPIC_API_KEY.
         extra_path: additional PATH entries prepended (e.g. uv tool bin dir).
+        include_secrets: if True, also propagate ANTHROPIC_API_KEY and
+            CURSOR_API_KEY from os.environ. Used ONLY by Layer-2 live-LLM
+            callers. Layer-1 deterministic tests must NEVER set this.
 
     Raises:
         CleanEnvError: if api_key is empty-string (None is allowed = skip).
@@ -86,6 +99,12 @@ def build_clean_env(
     }
     if api_key is not None:
         env["ANTHROPIC_API_KEY"] = api_key
+    if include_secrets:
+        # Layer-2 only: propagate explicit live-LLM secrets from os.environ.
+        for k in ("ANTHROPIC_API_KEY", "CURSOR_API_KEY"):
+            v = os.environ.get(k)
+            if v:
+                env[k] = v
     return env
 
 
@@ -244,3 +263,111 @@ def _kill_tree(pid: int) -> None:
             _kill_tree(child)
     except FileNotFoundError:
         pass
+
+
+# ── MCP stdio helpers ──────────────────────────────────────────────────────
+# Layer-1 portability surface: every harness (Claude, Cursor, ...) talks to
+# the same kg MCP server over stdio. These helpers spawn that server and
+# frame one-shot JSON-RPC so tests can assert structural responses without
+# any real LLM.
+
+def mcp_stdio_session(
+    kg_argv: Iterable[str],
+    *,
+    cwd: Path,
+    env: dict[str, str],
+    timeout: float = 30.0,
+) -> tuple[subprocess.Popen, "McpStdioClient"]:
+    """Start ``kg mcp serve`` over stdio and return (proc, client).
+
+    Used by drivers/tests that need to assert structural MCP responses from a
+    freshly installed kg binary (the same surface Cursor/Claude would talk to).
+    """
+    proc = subprocess.Popen(
+        list(kg_argv),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+        cwd=str(cwd),
+        env=env,
+    )
+    client = McpStdioClient(proc, timeout=timeout)
+    return proc, client
+
+
+class McpStdioClient:
+    """Minimal JSON-RPC over stdio client for one-shot tool calls.
+
+    Each method sends one request and reads one response. No streaming,
+    no async — the goal is structural assertions, not load testing.
+    """
+
+    def __init__(self, proc: subprocess.Popen, *, timeout: float = 30.0) -> None:
+        self.proc = proc
+        self.timeout = timeout
+        self._next_id = 1
+
+    def send(self, payload: dict[str, Any]) -> None:
+        assert self.proc.stdin is not None, "process has no stdin"
+        line = json.dumps(payload) + "\n"
+        self.proc.stdin.write(line)
+        self.proc.stdin.flush()
+
+    def recv(self, *, timeout: float | None = None) -> dict[str, Any]:
+        assert self.proc.stdout is not None, "process has no stdout"
+        wait = timeout if timeout is not None else self.timeout
+        rlist, _, _ = select.select([self.proc.stdout], [], [], wait)
+        assert rlist, "no stdout within timeout"
+        line = self.proc.stdout.readline()
+        assert line, "stdout closed"
+        return json.loads(line)
+
+    def request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        msg_id = self._next_id
+        self._next_id += 1
+        payload: dict[str, Any] = {"jsonrpc": "2.0", "id": msg_id, "method": method}
+        if params is not None:
+            payload["params"] = params
+        self.send(payload)
+        return self.recv()
+
+    def notify(self, method: str, params: dict[str, Any] | None = None) -> None:
+        payload: dict[str, Any] = {"jsonrpc": "2.0", "method": method}
+        if params is not None:
+            payload["params"] = params
+        self.send(payload)
+
+    def initialize(self) -> dict[str, Any]:
+        return self.request("initialize", {
+            "protocolVersion": "2025-06-18",
+            "clientInfo": {"name": "kg-e2e-driver", "version": "0"},
+            "capabilities": {},
+        })
+
+    def list_tools(self) -> dict[str, Any]:
+        return self.request("tools/list")
+
+    def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        return self.request("tools/call", {"name": name, "arguments": arguments})
+
+    def close(self) -> None:
+        if self.proc.poll() is None:
+            try:
+                self.proc.kill()
+            except OSError:
+                pass
+            try:
+                self.proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+
+
+class SkipLayer2(RuntimeError):
+    """Raised when a Layer-2 (live-LLM) driver cannot run.
+
+    The test converts this to ``pytest.skip`` so CI stays green when the
+    required binary / API key is absent.
+    """
+

@@ -48,8 +48,7 @@ jobs:
         run: |
           mkdir -p "$HOME"
           uv run pytest tests \
-            -p no:cacheprovider \
-            --ignore=tests/e2e/test_live_session.py
+            -p no:cacheprovider
 
       - name: Upload pytest logs on failure
         if: failure()
@@ -71,8 +70,6 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-    env:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -94,18 +91,26 @@ jobs:
       - name: Run live-session tests (gated)
         env:
           HOME: ${{ runner.temp }}/fake-home
+          # Key is consumed by skipif-gated tests via os.environ; never echoed.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           mkdir -p "$HOME"
           if [ -z "$ANTHROPIC_API_KEY" ]; then
-            echo "ANTHROPIC_API_KEY not set — skipping live-session tier."
+            echo "ANTHROPIC_API_KEY not set — skipping live-session tier cleanly."
             exit 0
           fi
           if ! command -v claude >/dev/null 2>&1 && ! command -v cursor >/dev/null 2>&1; then
-            echo "No claude/cursor binary on PATH — skipping live-session tier."
+            echo "No claude/cursor binary on PATH — skipping live-session tier cleanly."
             exit 0
           fi
-          uv run pytest tests/e2e/test_live_session.py -v || \
-            uv run pytest tests/e2e -k live_session -v || true
+          # Tier-2 targets the two REAL files. The `-k live_session` filter
+          # matched nothing (the file was named test_live_session.py — a
+          # phantom); we run the actual test classes instead. The earlier
+          # `|| true` is GONE: a real failure must fail the job.
+          uv run pytest \
+            tests/e2e/test_live_claude.py \
+            tests/e2e/test_live_cursor.py \
+            -v
 
       - name: Upload live-session logs on failure
         if: failure()

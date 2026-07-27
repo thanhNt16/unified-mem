@@ -26,7 +26,8 @@ from pathlib import Path
 
 import pytest
 
-from tests.e2e.drivers.cursor_driver import CursorDriver, SkipLayer2
+from tests.e2e.drivers.cursor_driver import CursorDriver
+from tests.e2e.harness import SkipLayer2, build_clean_env
 
 # ---- fixtures ----------------------------------------------------------
 
@@ -175,12 +176,9 @@ def test_layer1_cursor_driver_stdio_initialize_list_search_expand(golden_project
         )
         _assert_expand_memory_shape(expand, req_id=4, seed_id=demis_id)
     finally:
-        out, err = driver.stop()
-        # Stdout must be protocol-only on success too (no stray banner).
-        # On stop() we capture any remaining buffered output.
-        assert not out.strip().startswith("{") or out.strip().startswith('{"jsonrpc"'), (
-            f"unexpected stdout: {out[:200]!r}"
-        )
+        driver.stop()
+        # Stdout was streamed inline during the test via McpStdioClient.
+        # The ABC stop() force-kills + reaps; nothing to unpack.
 
 
 def test_layer1_cursor_driver_path_taken_documented(golden_project: Path, tmp_path: Path):
@@ -224,7 +222,6 @@ def test_layer1_cursor_driver_clean_env_no_secret_leak(golden_project: Path, tmp
     try:
         # Build a clean env the same way the driver does (Layer 1
         # deterministic does not pass include_secrets, so no key leaks).
-        from tests.e2e.drivers.base import build_clean_env
         clean = build_clean_env(home)
         assert "KG_E2E_PARENT_SHOULD_NOT_LEAK" not in clean, clean
         # Layer 1 deterministic must NOT carry API keys.
@@ -300,11 +297,11 @@ def test_layer2_real_cursor_graph_grew(tmp_path: Path):
         driver.stop()
 
     post_count = _count_nodes(project)
-    # Graph grew — Cursor (or its MCP client) wrote at least one node.
-    # If Cursor's CLI doesn't actually drive kg, this assertion surfaces
-    # that the path_taken was misleading.
-    assert post_count >= pre_count, (
-        f"node count shrank: pre={pre_count} post={post_count}; "
+    # A real Cursor session must have run (not stdio fallback) and must have
+    # written at least one new node. Equality is a silent no-op, not success.
+    assert driver.path_taken.startswith("cursor:"), driver.path_taken
+    assert post_count > pre_count, (
+        f"graph did not grow: pre={pre_count} post={post_count}; "
         f"path_taken={driver.path_taken!r}"
     )
 
@@ -323,3 +320,27 @@ def _count_nodes(project_root: Path) -> int:
         close = getattr(adapter, "close", None)
         if callable(close):
             close()
+
+
+# ---- Cursor headless flag discovery -------------------------------------
+
+def test_cursor_find_agent_flag_returns_advertised_flag(monkeypatch):
+    """I4: use the flag discovered from ``cursor --help`` — never hardcode print."""
+    class Result:
+        returncode = 0
+        stdout = "Usage: cursor --agent PROMPT"
+        stderr = ""
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: Result())
+    assert CursorDriver._cursor_find_agent_flag("cursor") == "--agent"
+
+
+def test_cursor_find_agent_flag_none_when_unadvertised(monkeypatch):
+    """No recognized flag means Layer-2 must skip, not invent an argv shape."""
+    class Result:
+        returncode = 0
+        stdout = "Usage: cursor [options]"
+        stderr = ""
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: Result())
+    assert CursorDriver._cursor_find_agent_flag("cursor") is None

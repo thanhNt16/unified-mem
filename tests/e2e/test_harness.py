@@ -204,6 +204,22 @@ class TestBuildCleanEnv:
         build_clean_env(sub)
         assert sub.is_dir()
 
+    def test_include_secrets_propagates_keys(self, tmp_path, monkeypatch):
+        """Layer-2 callers opt in to ANTHROPIC_API_KEY / CURSOR_API_KEY propagation."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant")
+        monkeypatch.setenv("CURSOR_API_KEY", "sk-cur")
+        env = build_clean_env(tmp_path, include_secrets=True)
+        assert env["ANTHROPIC_API_KEY"] == "sk-ant"
+        assert env["CURSOR_API_KEY"] == "sk-cur"
+
+    def test_include_secrets_false_drops_keys(self, tmp_path, monkeypatch):
+        """Layer-1 default must NEVER propagate API keys."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant")
+        monkeypatch.setenv("CURSOR_API_KEY", "sk-cur")
+        env = build_clean_env(tmp_path)
+        assert "ANTHROPIC_API_KEY" not in env
+        assert "CURSOR_API_KEY" not in env
+
 
 # ── SessionDriver ABC (smoke) ──────────────────────────────────────────
 
@@ -269,3 +285,85 @@ class TestSessionDriverABC:
         drv._proc = MagicMock()  # pretend started
         with pytest.raises(TimeoutError, match="wait_for gave up"):
             drv.wait_for(lambda: False, timeout=0.3)
+
+
+# ── McpStdioClient (harness.py) ──────────────────────────────────────────
+# Layer-1 stdio transport. C2 unified everything into harness.py; these
+# tests pin the contract so the SINGLE home for these helpers stays put.
+
+class TestMcpStdioClient:
+    """The harness.py McpStdioClient — structural JSON-RPC over stdio."""
+
+    def test_helpers_exposed_from_harness(self):
+        """mcp_stdio_session, McpStdioClient, SkipLayer2 live in harness now."""
+        from tests.e2e.harness import (
+            McpStdioClient,
+            SkipLayer2,
+            mcp_stdio_session,
+        )
+        assert callable(mcp_stdio_session)
+        assert isinstance(McpStdioClient, type)
+        assert issubclass(SkipLayer2, RuntimeError)
+
+    def test_request_assigns_incrementing_ids(self):
+        """request() must allocate unique ids 1, 2, 3, ... per client.
+
+        We drive request() but stub recv to skip the real stdout read.
+        """
+        from tests.e2e.harness import McpStdioClient
+
+        class FakeProc:
+            def __init__(self):
+                self.stdin = MagicMock()
+                self.stdout = MagicMock()
+                self.poll = lambda: None
+
+        client = McpStdioClient(FakeProc(), timeout=1.0)
+        # recv() never runs — we only care about ids assigned on send.
+        client.recv = lambda **_: {}
+        for expected_id in (1, 2, 3):
+            client.request("tools/list")
+            sent = client.proc.stdin.write.call_args[0][0]
+            payload = json.loads(sent.strip())
+            assert payload["id"] == expected_id, payload
+            assert payload["method"] == "tools/list"
+
+    def test_recv_timeout_raises(self):
+        """recv must assert-fail when stdout produces nothing within timeout."""
+        import tests.e2e.harness as h_mod
+        from tests.e2e.harness import McpStdioClient
+
+        class FakeProc:
+            def __init__(self):
+                self.stdin = MagicMock()
+                self.stdout = MagicMock()
+                self.poll = lambda: None
+
+        client = McpStdioClient(FakeProc(), timeout=0.01)
+        # select.select returns no ready fds → assertion error
+        with patch.object(h_mod.select, "select", return_value=([], [], [])):
+            with pytest.raises(AssertionError, match="no stdout"):
+                client.recv()
+
+
+# ── SkipLayer2 ────────────────────────────────────────────────────────────
+
+class TestSkipLayer2:
+    def test_is_runtime_error_subclass(self):
+        """SkipLayer2 must be a RuntimeError so test code can catch broadly."""
+        from tests.e2e.harness import SkipLayer2
+        assert issubclass(SkipLayer2, RuntimeError)
+
+    def test_raised_message_preserved(self):
+        from tests.e2e.harness import SkipLayer2
+        exc = SkipLayer2("no binary")
+        assert str(exc) == "no binary"
+
+
+# ── Driver polymorphism ---------------------------------------------------
+
+def test_all_drivers_share_single_session_driver_abc():
+    """C2: ClaudeDriver + CursorDriver are substitutable SessionDriver subclasses."""
+    from tests.e2e.drivers import ClaudeDriver, CursorDriver
+    assert issubclass(ClaudeDriver, SessionDriver)
+    assert issubclass(CursorDriver, SessionDriver)
