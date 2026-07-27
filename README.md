@@ -4,11 +4,27 @@ Portable, local-first unified memory layer — **files + vectors + graph** — f
 harness (Claude Code, Codex, OpenCode, Cursor). The harness LLM does extraction
 and judgment; the `kg` engine does deterministic storage, matching, and search.
 
-> **Status:** M0 (files layer) ships — `init`, `raw add/list`, `status`, `config`.
-> The graph + normalization gate, dream consolidation, MCP server, harness
-> installers, visualization, and benchmarks land in M1–M6. See
-> `docs/superpowers/specs/2026-07-26-kg-unified-memory-design.md` for the design
-> and `docs/superpowers/plans/` for milestone plans.
+> **Status:** M0–M5 ship — files + graph + MCP + installers + portability E2E.
+> Realized commands: `init`, `raw add/list`, `status`, `config`, `save`,
+> `search`, `expand`, `pack`, `resolve`, `dedup-check`, `cypher`,
+> `wiki sync/build/lint`, `dream candidates`, `merge`, `review`, `snapshot`,
+> `viz`, `install`, `mcp serve`, `hook session-end`.
+> Benchmarks land in M6. See
+> [the architecture overview](docs/architecture/overview.md) and
+> [the quickstart](docs/guides/quickstart.md), or
+> `docs/superpowers/specs/2026-07-26-kg-unified-memory-design.md` for the full
+> design.
+
+## Documentation
+
+- [Quickstart](docs/guides/quickstart.md) — `make install`, `kg init`, first save, first search.
+- [Harness setup](docs/guides/harness-setup.md) — install kg into Claude Code, Codex, OpenCode, Cursor, or `AGENTS.md`.
+- [Architecture overview](docs/architecture/overview.md) — layered design, content-derived IDs, resolution vs dedup, gray zone, tombstone.
+- [Data model](docs/architecture/data-model.md) — Node/Edge schema, ontology contract, storage adapter.
+- [Runbook](docs/ops/runbook.md) — snapshot/restore, dream/review, wiki sync.
+- [Troubleshooting](docs/ops/troubleshooting.md) — drift errors, MCP failures, missing skills.
+- Spec: `docs/superpowers/specs/2026-07-26-kg-unified-memory-design.md` (full design).
+- [CHANGELOG.md](CHANGELOG.md) — milestone-by-milestone changes.
 
 ## Quick start (from this checkout)
 
