@@ -3,6 +3,15 @@
 Per-milestone changes to kg. Realized commands only; deferred features are
 flagged in [the architecture overview](docs/architecture/overview.md).
 
+## [M6] — 2026-07-27 — Benchmarks & Docs
+
+- **Added** benchmark suite (`bench/`): deterministic corpus generator (10/50/250-doc scales, seeded), graph-cleanliness metrics, keyword-grounded answer-quality rubric, baseline (grep) vs kg runners, honest reporter. No fabricated numbers — only measured values; unrun tiers marked NOT_MEASURED.
+- **Added** `kg bench --scale N` CLI (10 = CI-safe default) + `make bench` target (sets PYTHONPATH so the dev-only `bench` harness resolves from the repo checkout).
+- **Added** `.github/workflows/bench.yml` — deterministic 10-doc bench on push + weekly; no API key/LLM/network.
+- **Added** documentation set: `docs/guides/{quickstart,harness-setup}.md`, `docs/architecture/{overview,data-model}.md`, `docs/ops/{runbook,troubleshooting}.md`. `tests/test_docs.py` guards against stale-command drift (every documented command verified against realized `main.py`).
+- **Added** status report `docs/reports/2026-07-27-m6-status-report.html` — M0–M6 milestones COMPLETE, commands LIVE, 10-doc benchmarks MEASURED (cleanliness 0.994, median 3.9ms, rubric 1.0), 50/250 NOT_MEASURED (release-gated), cost null (driver emits no usage tokens).
+- **Honesty**: cost metrics null with documented reason; large-scale tiers not fabricated; rubric is keyword string-match (not an LLM judge), renamed accordingly.
+
 ## [M5] — 2026-07-26 — Distribution & E2E
 
 - **Added** harness installer matrix: `claude`, `codex`, `opencode`, `cursor`,
