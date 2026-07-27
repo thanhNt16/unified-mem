@@ -232,9 +232,16 @@ def plan_claude_install(
         + (["--allow-writes"] if allow_writes else []),
     }
     old_mcp = servers.get(MCP_NAME, _MISSING)
+    # kg-owned key whose argv changed (e.g. toggling --allow-writes on a prior
+    # install) is an upgrade, not a foreign collision — force overwrites it.
+    # A genuinely foreign entry (no kg manifest ownership) still refuses.
     if old_mcp != _MISSING and old_mcp != wanted_mcp:
-        raise InstallConflict(f"MCP server name collision at {MCP_NAME!r}: {mcp_path}")
-    if old_mcp == _MISSING:
+        if not (force and manifest is not None):
+            raise InstallConflict(
+                f"MCP server name collision at {MCP_NAME!r}: {mcp_path}"
+                + ("; use force to overwrite kg-owned entry" if manifest is not None else "")
+            )
+    if old_mcp == _MISSING or (force and manifest is not None and old_mcp != wanted_mcp):
         updated = dict(mcp)
         updated_servers = dict(servers)
         updated_servers[MCP_NAME] = wanted_mcp
@@ -318,8 +325,8 @@ def plan_claude_install(
 
     if manifest and not plan.writes and not plan.skills:
         return plan
-    if manifest:
-        raise InstallConflict("Existing install manifest does not match current installation; uninstall first")
+    if manifest and not force:
+        raise InstallConflict("Existing install manifest does not match current installation; uninstall first (or pass --force to upgrade kg-owned fragments)")
     return plan
 
 

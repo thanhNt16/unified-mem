@@ -120,6 +120,34 @@ def test_mcp_collision_refuses(tmp_path):
         plan_claude_install(project, home, skills_src=skills)
 
 
+def test_mcp_collision_foreign_refuses_even_with_force(tmp_path):
+    """Foreign kg entry with no kg manifest ownership refuses even under --force."""
+    home, project, skills = roots(tmp_path)
+    (project / ".mcp.json").write_text(json.dumps({"mcpServers": {"kg": {"command": "mine"}}}))
+    # No prior kg install → manifest absent → foreign; force cannot overwrite.
+    with pytest.raises(InstallConflict, match="collision"):
+        plan_claude_install(project, home, skills_src=skills, force=True)
+
+
+def test_mcp_argv_upgrade_with_force_overwrites_kg_owned(tmp_path):
+    """Toggling --allow-writes on a prior kg install upgrades under --force."""
+    home, project, skills = roots(tmp_path)
+    first = apply_plan(plan_claude_install(project, home, skills_src=skills))
+    assert first.transaction_state.value == "committed"
+    mcp_before = json.loads((project / ".mcp.json").read_text())["mcpServers"]["kg"]
+    assert "--allow-writes" not in mcp_before["args"]
+    # Without force, the argv change looks like a collision → refuse.
+    with pytest.raises(InstallConflict, match="collision"):
+        plan_claude_install(project, home, skills_src=skills, allow_writes=True)
+    # With force, the kg-owned key upgrades.
+    upgraded = plan_claude_install(
+        project, home, skills_src=skills, allow_writes=True, force=True
+    )
+    apply_plan(upgraded)
+    mcp_after = json.loads((project / ".mcp.json").read_text())["mcpServers"]["kg"]
+    assert "--allow-writes" in mcp_after["args"]
+
+
 def test_hook_deduplicates_exact_member(tmp_path):
     home, project, skills = roots(tmp_path)
     first = plan_claude_install(project, home, skills_src=skills)
