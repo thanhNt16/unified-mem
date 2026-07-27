@@ -13,6 +13,7 @@ from kg.dedup import Deduper
 from kg.embed import make_embedder
 from kg.gate import Gate
 from kg.paths import KgPaths
+from kg.registry import Registry
 from kg.resolve import Resolver
 from kg.storage.sqlite import SQLiteAdapter
 
@@ -73,3 +74,11 @@ def save_cli(
         )
     typer.echo(f"edges: {report.edges_upserted}  new same_as: {report.new_same_as}")
     typer.echo(f"dropped edges: {len(report.dropped_edges)}")
+
+    # Mark source as extracted in registry (Bug 1)
+    source_path = source.split("#")[0]
+    registry = Registry(paths.registry)
+    for entry in registry.all():
+        if entry.path == source_path:
+            registry.mark_extracted(entry.sha256, chunks_done=[], chunks_failed={})
+            break
