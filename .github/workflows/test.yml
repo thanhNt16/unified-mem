@@ -1,0 +1,119 @@
+name: test
+
+on:
+  push:
+    branches: [main, "m5-**"]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Tier 1: deterministic, no secrets. Runs on every push / PR.
+  bootstrap:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Build wheel
+        run: uv build
+
+      - name: Install kg as global tool
+        run: uv tool install ./dist/*.whl --force
+
+      - name: Verify kg on PATH
+        run: |
+          command -v kg
+          kg --help > /dev/null
+
+      - name: Run deterministic tests
+        env:
+          # Isolated HOME so install/uninstall never touches the runner's real home.
+          HOME: ${{ runner.temp }}/fake-home
+        run: |
+          mkdir -p "$HOME"
+          uv run pytest tests \
+            -p no:cacheprovider \
+            --ignore=tests/e2e/test_live_session.py
+
+      - name: Upload pytest logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-logs-${{ matrix.os }}
+          path: |
+            .pytest_cache
+            **/*.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Tier 2: live-session tests. Skipped cleanly unless ANTHROPIC_API_KEY is
+  # present AND a harness binary (claude / cursor) is available on PATH.
+  # Never echoes the key.
+  live-session:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Build wheel
+        run: uv build
+
+      - name: Install kg as global tool
+        run: uv tool install ./dist/*.whl --force
+
+      - name: Run live-session tests (gated)
+        env:
+          HOME: ${{ runner.temp }}/fake-home
+        run: |
+          mkdir -p "$HOME"
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "ANTHROPIC_API_KEY not set — skipping live-session tier."
+            exit 0
+          fi
+          if ! command -v claude >/dev/null 2>&1 && ! command -v cursor >/dev/null 2>&1; then
+            echo "No claude/cursor binary on PATH — skipping live-session tier."
+            exit 0
+          fi
+          uv run pytest tests/e2e/test_live_session.py -v || \
+            uv run pytest tests/e2e -k live_session -v || true
+
+      - name: Upload live-session logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-session-logs
+          path: |
+            .pytest_cache
+            **/*.log
+          if-no-files-found: ignore
+          retention-days: 7
