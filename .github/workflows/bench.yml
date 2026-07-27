@@ -1,0 +1,47 @@
+name: bench
+
+on:
+  push:
+    branches: [main, "m6-**"]
+  schedule:
+    - cron: '0 6 * * 1'  # weekly Monday 06:00 UTC
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Build wheel
+        run: uv build
+
+      - name: Install kg as global tool
+        run: uv tool install ./dist/*.whl --force
+
+      - name: Verify kg on PATH
+        run: |
+          command -v kg
+          kg --help > /dev/null
+
+      - name: Run benchmark (10-doc tier, no API key needed)
+        run: make bench
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: bench/results/
+          retention-days: 30

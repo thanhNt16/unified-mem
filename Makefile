@@ -1,7 +1,7 @@
 PKG := kg
 H ?= claude
 
-.PHONY: dev build test install uninstall clean
+.PHONY: dev build test install uninstall clean bench
 
 dev:           ## editable install for working on kg itself
 	uv sync
@@ -23,3 +23,6 @@ uninstall:     ## reverse of install
 
 clean:
 	rm -rf dist build *.egg-info
+
+bench:          ## run deterministic benchmark (CI-safe 10-doc tier)
+	uv run kg bench --scale 10
