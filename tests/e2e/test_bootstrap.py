@@ -47,10 +47,10 @@ def _assert_ok(result, label: str = ""):
 
 
 def _has_claude_config(home: Path, project: Path) -> None:
-    claude_json = home / ".claude.json"
+    claude_json = project / ".mcp.json"
     assert claude_json.is_file(), f"missing {claude_json}"
     assert "kg" in json.loads(claude_json.read_text())["mcpServers"]
-    settings = home / ".claude" / "settings.json"
+    settings = project / ".claude" / "settings.json"
     assert settings.is_file(), f"missing {settings}"
     assert "SessionEnd" in json.loads(settings.read_text())["hooks"]
     instructions = project / "CLAUDE.md"

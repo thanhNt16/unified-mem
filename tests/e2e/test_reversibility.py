@@ -125,11 +125,11 @@ def _add_user_artifact(harness: str, tmp_path: Path) -> None:
     home = tmp_path / "home"
     if harness == "claude":
         # Add a non-kg MCP server entry + user CLAUDE.md line + user hook.
-        mcp = home / ".claude.json"
+        mcp = project / ".mcp.json"
         data = json.loads(mcp.read_text())
         data.setdefault("mcpServers", {})["user-server"] = {"command": "user"}
         mcp.write_text(json.dumps(data), encoding="utf-8")
-        settings = home / ".claude" / "settings.json"
+        settings = project / ".claude" / "settings.json"
         sdata = json.loads(settings.read_text())
         sdata["hooks"]["SessionEnd"].append({"matcher": "user", "hooks": []})
         settings.write_text(json.dumps(sdata), encoding="utf-8")
@@ -164,9 +164,9 @@ def _assert_user_artifact_preserved(harness: str, tmp_path: Path) -> None:
     project = tmp_path / "project"
     home = tmp_path / "home"
     if harness == "claude":
-        mcp = json.loads((home / ".claude.json").read_text())
+        mcp = json.loads((project / ".mcp.json").read_text())
         assert mcp["mcpServers"].get("user-server") == {"command": "user"}
-        settings = json.loads((home / ".claude" / "settings.json").read_text())
+        settings = json.loads((project / ".claude" / "settings.json").read_text())
         assert {"matcher": "user", "hooks": []} in settings["hooks"]["SessionEnd"]
         assert "user CLAUDE.md line" in (project / "CLAUDE.md").read_text()
     elif harness in ("codex", "cursor", "opencode", "agents"):
@@ -187,9 +187,9 @@ def _assert_kg_owned_gone(harness: str, tmp_path: Path) -> None:
     project = tmp_path / "project"
     home = tmp_path / "home"
     if harness == "claude":
-        mcp = json.loads((home / ".claude.json").read_text())
+        mcp = json.loads((project / ".mcp.json").read_text())
         assert "kg" not in mcp.get("mcpServers", {}), mcp
-        settings = json.loads((home / ".claude" / "settings.json").read_text())
+        settings = json.loads((project / ".claude" / "settings.json").read_text())
         kg_hooks = [
             h for h in settings["hooks"]["SessionEnd"]
             if any("kg" in str(hook.get("command", "")) for hook in h.get("hooks", []))

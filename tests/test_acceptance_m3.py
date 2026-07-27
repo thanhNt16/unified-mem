@@ -86,8 +86,8 @@ def test_m3_install_mcp_hook_uninstall_roundtrip(tmp_path, monkeypatch):
 
     applied = runner.invoke(app, ["install", "claude", "--apply", "--home-root", str(home), "--skills-src", str(SKILLS_SRC)])
     _assert_ok(applied)
-    claude_json = home / ".claude.json"
-    settings = home / ".claude" / "settings.json"
+    claude_json = project / ".mcp.json"
+    settings = project / ".claude" / "settings.json"
     instructions = project / "CLAUDE.md"
     assert all((project / ".claude" / "skills" / name / "SKILL.md").is_file()
                for name in ("kg-extract", "kg-query", "kg-dream"))

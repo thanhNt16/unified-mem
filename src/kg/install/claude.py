@@ -184,18 +184,18 @@ def plan_claude_install(
 
     manifest = _owned_manifest(project)
     plan = InstallPlan(project, home, source, force, existing_manifest=manifest)
-    claude_root = home / ".claude"
-    # Skills are project-local + flat: <project>/.claude/skills/<name>/SKILL.md.
-    # Claude Code discovers skills with a flat glob; a `kg/` namespace subdir would
-    # hide them, and project-local scope matches the per-project `.kg/` model.
-    skill_root = project / ".claude" / "skills"
-    mcp_path = home / ".claude.json"
+    # Entire install is project-scoped (no global ~/.claude pollution): skills,
+    # MCP server (project .mcp.json), and SessionEnd hook (project .claude/settings.json)
+    # all live under <project>/. Claude Code discovers each at these project paths.
+    claude_root = project / ".claude"
+    skill_root = claude_root / "skills"
+    mcp_path = project / ".mcp.json"
     settings_path = claude_root / "settings.json"
     instructions_path = project / "CLAUDE.md"
     for target, root in (
         (skill_root, project),
-        (mcp_path, home),
-        (settings_path, home),
+        (mcp_path, project),
+        (settings_path, project),
         (instructions_path, project),
         (manifest_path(project), project),
         (project / ".kg-install-backups", project),
@@ -241,7 +241,7 @@ def plan_claude_install(
             PlannedWrite(
                 mcp_path,
                 _dump(updated),
-                home,
+                project,
                 ArtifactKind.JSON_OBJECT,
                 f"/mcpServers/{MCP_NAME}",
                 _prior(_MISSING),
@@ -278,7 +278,7 @@ def plan_claude_install(
             PlannedWrite(
                 settings_path,
                 _dump(updated),
-                home,
+                project,
                 ArtifactKind.JSON_LIST_MEMBER,
                 "/hooks/SessionEnd",
                 json.dumps(wanted_hook, sort_keys=True),
