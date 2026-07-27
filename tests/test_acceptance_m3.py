@@ -15,6 +15,7 @@ from typer.testing import CliRunner
 from kg.cli.init import init_project
 from kg.cli.main import app
 from kg.config import Config
+from kg.install import common
 from kg.install.manifest import manifest_path
 from kg.paths import KgPaths
 
@@ -90,7 +91,7 @@ def test_m3_install_mcp_hook_uninstall_roundtrip(tmp_path, monkeypatch):
     settings = project / ".claude" / "settings.json"
     instructions = project / "CLAUDE.md"
     assert all((project / ".claude" / "skills" / name / "SKILL.md").is_file()
-               for name in ("kg-extract", "kg-query", "kg-dream"))
+               for name in common.SKILLS)
     assert "kg" in json.loads(claude_json.read_text())["mcpServers"]
     assert json.loads(settings.read_text())["hooks"]["SessionEnd"]
     assert "<!-- kg-install:claude:begin -->" in instructions.read_text()

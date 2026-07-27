@@ -1,6 +1,6 @@
 ---
 name: kg-extract
-description: Extract POLE entities (Person, Organization, Location, Event) plus Object/Fact/Preference from a raw source into the local knowledge graph. Triggered after `/kg:ingest` or on demand. The harness LLM does the extraction; `kg save` is the only write path.
+description: Extract POLE entities (Person, Organization, Location, Event) plus Object/Fact/Preference from a raw source into the local knowledge graph. Triggered after `/kg-ingest` or on demand. The harness LLM does the extraction; `kg save` is the only write path.
 ---
 
 # kg-extract
@@ -9,12 +9,12 @@ Turn raw markdown in `raw/` into graph nodes and edges. Extraction is **harness-
 
 > **Deferred to M2:** `kg raw rechunk` is not yet implemented in M1; the command will exit with an error.
 
-This skill assumes `/kg:ingest` has already placed the source in `raw/` with chunk boundaries in frontmatter. If you don't see frontmatter `chunks:`, run `kg raw rechunk <file>` first.
+This skill assumes `/kg-ingest` has already placed the source in `raw/` with chunk boundaries in frontmatter. If you don't see frontmatter `chunks:`, run `kg raw rechunk <file>` first.
 
 
 ## When to run
 
-- After `/kg:ingest` lands a new source and you want it in the graph.
+- After `/kg-ingest` lands a new source and you want it in the graph.
 - On demand: the user points at `raw/<file>.md` and says "extract this".
 - Re-run after editing extraction prompts or ontology — chunks are idempotent and safe to re-run; the gate deduplicates.
 
@@ -66,7 +66,7 @@ For each raw file the user names:
    - Run `kg wiki sync --touched <file>` to regenerate affected entity pages (`wiki/entities/<slug>.md`).
 
    - Mark the registry entry `extracted`.
-   - Surface the gray-zone list to the user: "N pairs flagged — run `/kg:dream` or `kg review list`."
+   - Surface the gray-zone list to the user: "N pairs flagged — run `/kg-dream` or `kg review list`."
 
 ## Extraction is name-space-local (non-negotiable)
 
@@ -146,7 +146,7 @@ Resume reads this line and picks up at chunk 3 (retry) or chunk 5 (next undone).
 
 ## Concurrency
 
-`kg save` takes a process-wide file lock on `kg.db` and queues writes (SQLite WAL, one writer). You may run multiple chunk extractions in parallel; they will serialize at save. Cross-process blind spots (two processes see the same gray-zone pair before either commits) are caught later by `/kg:dream`'s RECENT-PAIR job — do NOT try to handle them in extract.
+`kg save` takes a process-wide file lock on `kg.db` and queues writes (SQLite WAL, one writer). You may run multiple chunk extractions in parallel; they will serialize at save. Cross-process blind spots (two processes see the same gray-zone pair before either commits) are caught later by `/kg-dream`'s RECENT-PAIR job — do NOT try to handle them in extract.
 
 ## Failure modes
 
@@ -157,10 +157,10 @@ Resume reads this line and picks up at chunk 3 (retry) or chunk 5 (next undone).
 
 ## What this skill does NOT do
 
-- **Merge.** Merges happen in the gate at ≥0.95 or via `/kg:dream`. Extract always emits names verbatim from the source.
+- **Merge.** Merges happen in the gate at ≥0.95 or via `/kg-dream`. Extract always emits names verbatim from the source.
 - **Write the graph.** The only write path is `kg save`. Never construct node IDs, never edit `kg.db` directly.
-- **Ingest.** Use `/kg:ingest` to get sources into `raw/`. This skill assumes that is done.
-- **Query.** Use `/kg:query`.
+- **Ingest.** Use `/kg-ingest` to get sources into `raw/`. This skill assumes that is done.
+- **Query.** Use `/kg-query`.
 
 ## References
 

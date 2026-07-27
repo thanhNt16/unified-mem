@@ -28,6 +28,7 @@ from typer.testing import CliRunner
 
 from kg.cli.init import init_project
 from kg.cli.main import app
+from kg.install import common
 from kg.install.manifest import manifest_path
 
 runner = CliRunner()
@@ -197,7 +198,7 @@ def _assert_kg_owned_gone(harness: str, tmp_path: Path) -> None:
         assert kg_hooks == [], kg_hooks
         assert "kg-install:claude" not in (project / "CLAUDE.md").read_text()
         # Each installed skill directory is removed; parent kg/ may linger as empty dir.
-        for name in ("kg-extract", "kg-query", "kg-dream"):
+        for name in common.SKILLS:
             assert not (home / ".claude" / "skills" / "kg" / name).exists()
     elif harness == "codex":
         # Codex owns .codex/config.toml wholly when written fresh.

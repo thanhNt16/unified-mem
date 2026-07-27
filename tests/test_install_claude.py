@@ -13,6 +13,7 @@ from kg.install.claude import (
     plan_claude_install,
     uninstall,
 )
+from kg.install import common
 from kg.install.manifest import ArtifactKind, load_manifest
 
 
@@ -21,7 +22,7 @@ def roots(tmp_path: Path):
     project = tmp_path / "project"
     skills = tmp_path / "skills"
     home.mkdir(); project.mkdir(); skills.mkdir()
-    for name in ("kg-extract", "kg-query", "kg-dream"):
+    for name in common.SKILLS:
         directory = skills / name
         directory.mkdir()
         (directory / "SKILL.md").write_text(name)
@@ -62,7 +63,7 @@ def test_apply_exact_expected_and_manifest_ownership(tmp_path):
     # Trusted session-root dir is created at apply time
     assert (project / ".kg" / "sessions").is_dir()
     assert STANZA == (project / "CLAUDE.md").read_bytes()
-    for name in ("kg-extract", "kg-query", "kg-dream"):
+    for name in common.SKILLS:
         assert (project / ".claude/skills" / name / "SKILL.md").read_text() == name
     loaded = load_manifest(project)
     assert loaded.transaction_state.value == "committed"

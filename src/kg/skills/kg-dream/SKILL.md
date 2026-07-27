@@ -12,7 +12,7 @@ Dream = the graph surfaces what it could not auto-resolve; the harness decides. 
 ## When to run
 
 - The user says "review the graph", "what needs attention", "clean up duplicates".
-- After a bulk extract run (`/kg:extract`) — gray-zone pairs land here.
+- After a bulk extract run (`/kg-extract`) — gray-zone pairs land here.
 - Periodically as graph hygiene. The engine advances NO marker on its own; the user/harness decides when the queue is "done".
 
 ## Non-negotiable: no implicit state

@@ -13,7 +13,7 @@ from typing import Any
 
 from .manifest import ArtifactKind, Harness, InstalledArtifact, InstallManifest, TransactionState, _check_no_symlink_escape, atomic_write, content_hash, load_manifest, manifest_path, save_manifest
 
-SKILLS = ("kg-extract", "kg-query", "kg-dream")
+SKILLS = ("kg-ingest", "kg-extract", "kg-query", "kg-dream")
 MCP_ARGV = ("kg", "mcp", "serve", "--project-root")
 _MISSING = {"__kg_install_missing__": True}
 

@@ -12,6 +12,13 @@ def test_extract_skill_exists_and_bounded():
     assert (ROOT / "kg-extract" / "references" / "output-schema.json").exists()
 
 
+def test_ingest_skill_exists_and_bounded():
+    md = (ROOT / "kg-ingest" / "SKILL.md").read_text(encoding="utf-8")
+    assert len(md.splitlines()) < 500
+    assert "kg raw add" in md
+    assert "kg raw list" in md
+
+
 def test_query_skill_exists_and_bounded():
     md = (ROOT / "kg-query" / "SKILL.md").read_text(encoding="utf-8")
     assert len(md.splitlines()) < 500

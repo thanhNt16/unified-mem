@@ -86,9 +86,9 @@ For exploratory questions needing broad coverage:
 
 ## What this skill does NOT do
 
-- **Write the graph.** Queries are read-only. Use `/kg:extract` for writes.
-- **Merge.** Use `/kg:dream`.
-- **Ingest.** Use `/kg:ingest`.
+- **Write the graph.** Queries are read-only. Use `/kg-extract` for writes.
+- **Merge.** Use `/kg-dream`.
+- **Ingest.** Use `/kg-ingest`.
 - **Touch raw files** (except deep-search last-resort).
 
 ## References

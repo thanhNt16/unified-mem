@@ -20,7 +20,7 @@ def raw_add(
     added, rel = add_source(paths, cfg, source, type, title, conversation)
     if added:
         typer.echo(f"added: {rel}")
-        typer.echo("next: run /kg:extract")
+        typer.echo("next: run /kg-extract")
     else:
         typer.echo(f"skipped (duplicate): {rel}")
 

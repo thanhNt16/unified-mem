@@ -31,14 +31,13 @@ from .manifest import (
     save_manifest,
 )
 
-SKILLS = ("kg-extract", "kg-query", "kg-dream")
 MCP_NAME = "kg"
 MARKER_BEGIN = "<!-- kg-install:claude:begin -->"
 MARKER_END = "<!-- kg-install:claude:end -->"
 STANZA = (
     f"{MARKER_BEGIN}\n"
     "## Local knowledge graph\n"
-    "Use the installed kg-extract, kg-query, and kg-dream skills for project memory.\n"
+    "Use the installed kg-ingest, kg-extract, kg-query, and kg-dream skills for project memory.\n"
     f"{MARKER_END}\n"
 ).encode()
 _MISSING = {"__kg_install_missing__": True}
@@ -203,7 +202,7 @@ def plan_claude_install(
     ):
         _validate_target(target, root)
 
-    for name in SKILLS:
+    for name in common.SKILLS:
         src = source / name
         if not src.is_dir() or not (src / "SKILL.md").is_file():
             raise InstallConflict(f"Required skill missing: {src}")
