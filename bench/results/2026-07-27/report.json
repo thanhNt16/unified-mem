@@ -1,0 +1,330 @@
+{
+  "baseline_results": [
+    {
+      "command": "rg -l --fixed-strings knowledge graph bench/results/2026-07-27/corpus/scale-10/corpus",
+      "matches": [
+        "17c295b924-0006.md",
+        "512de4f9be-0000.md",
+        "a7d3aa1d67-0005.md",
+        "c9e2fbd061-0001.md",
+        "near-dup-elena-vasquez-a.md",
+        "near-dup-elena-vasquez-b.md"
+      ],
+      "query": "knowledge graph",
+      "speed": {
+        "max_seconds": 0.0003875419788528234,
+        "median_seconds": 0.00035424999077804387,
+        "min_seconds": 0.0003425830218475312,
+        "n": 5,
+        "p95_seconds": 0.0003875419788528234,
+        "samples_seconds": [
+          0.0003425830218475312,
+          0.0003482920001260936,
+          0.00035424999077804387,
+          0.00035741599276661873,
+          0.0003875419788528234
+        ]
+      }
+    },
+    {
+      "command": "rg -l --fixed-strings Meridian Labs bench/results/2026-07-27/corpus/scale-10/corpus",
+      "matches": [
+        "gray-zone-paris.md",
+        "near-dup-elena-vasquez-a.md",
+        "near-dup-elena-vasquez-b.md"
+      ],
+      "query": "Meridian Labs",
+      "speed": {
+        "max_seconds": 0.00041079201037064195,
+        "median_seconds": 0.00038137499359436333,
+        "min_seconds": 0.000358000019332394,
+        "n": 5,
+        "p95_seconds": 0.00041079201037064195,
+        "samples_seconds": [
+          0.000358000019332394,
+          0.0003631250001490116,
+          0.00038137499359436333,
+          0.00040254098712466657,
+          0.00041079201037064195
+        ]
+      }
+    },
+    {
+      "command": "rg -l --fixed-strings Paris bench/results/2026-07-27/corpus/scale-10/corpus",
+      "matches": [
+        "17c295b924-0006.md",
+        "1e439b07cf-0008.md",
+        "512de4f9be-0000.md",
+        "58d052b551-0009.md",
+        "gray-zone-paris.md"
+      ],
+      "query": "Paris",
+      "speed": {
+        "max_seconds": 0.00035749998642131686,
+        "median_seconds": 0.0003440000000409782,
+        "min_seconds": 0.00033333300962112844,
+        "n": 5,
+        "p95_seconds": 0.00035749998642131686,
+        "samples_seconds": [
+          0.00033333300962112844,
+          0.0003432920202612877,
+          0.0003440000000409782,
+          0.00035187500179745257,
+          0.00035749998642131686
+        ]
+      }
+    }
+  ],
+  "cost": null,
+  "cost_reason": "No token data exists; cost is not measured.",
+  "kg_results": [
+    {
+      "cost": null,
+      "cost_reason": "ClaudeDriver parses stream-json but emits assistant text only; no usage tokens available. cost_from_log returns None until the driver is extended to capture message.usage. Do not fabricate.",
+      "embedder_mode": "fake",
+      "fastembed_checksum": null,
+      "graph_cleanliness": {
+        "attr_conflict_nodes": 0,
+        "attr_conflict_rate": 0.0,
+        "attr_conflict_subscore": 1.0,
+        "connected_nodes": 51,
+        "cross_doc_connectivity": 1.0,
+        "duplicate_name_nodes": 2,
+        "duplicate_name_rate": 0.0392156862745098,
+        "duplicate_name_subscore": 0.9607843137254902,
+        "orphan_fraction": 0.0,
+        "orphan_nodes": 0,
+        "orphan_subscore": 1.0,
+        "pending_same_as": 0,
+        "pending_same_as_fraction": 0.0,
+        "pending_same_as_subscore": 1.0,
+        "score": 0.9941176470588234,
+        "tombstone_fraction": 0.0,
+        "tombstone_subscore": 1.0,
+        "tombstoned_nodes": 0,
+        "total_nodes": 51
+      },
+      "queries": {
+        "Meridian Labs": {
+          "expanded_edges": 64,
+          "expanded_nodes": 48,
+          "hits": [
+            "Meridian Labs",
+            "Solaris Foundation",
+            "document:512de4f9be-0000.md",
+            "Ember Studios",
+            "document:c9e2fbd061-0001.md",
+            "Cape Town",
+            "Open Source Summit",
+            "DataSummit 2024",
+            "Amara Okafor",
+            "James O'Brien"
+          ],
+          "rubric": {
+            "cross_doc_hits": 1.0,
+            "lineage": 1.0,
+            "multi_hop_reach": 1.0,
+            "score": 1.0
+          }
+        },
+        "Paris": {
+          "expanded_edges": 62,
+          "expanded_nodes": 47,
+          "hits": [
+            "document:gray-zone-paris.md",
+            "Paris",
+            "document:near-dup-elena-vasquez-a.md",
+            "Cape Town",
+            "document:dc3dd19d1b-0004.md",
+            "Climate Action Forum",
+            "Tom\u00e1s Rivera",
+            "Priya Sharma",
+            "Nairobi",
+            "Horizon Biotech"
+          ],
+          "rubric": {
+            "cross_doc_hits": 1.0,
+            "lineage": 1.0,
+            "multi_hop_reach": 1.0,
+            "score": 1.0
+          }
+        },
+        "knowledge graph": {
+          "expanded_edges": 69,
+          "expanded_nodes": 51,
+          "hits": [
+            "document:near-dup-elena-vasquez-a.md",
+            "Open Source Summit",
+            "Amara Okafor",
+            "DataSummit 2024",
+            "document:f9ed9cbbfa-0003.md",
+            "Stockholm",
+            "Reykjavik",
+            "Yuki Tanaka",
+            "document:gray-zone-paris.md",
+            "Fatima Al-Rashid"
+          ],
+          "rubric": {
+            "cross_doc_hits": 1.0,
+            "lineage": 1.0,
+            "multi_hop_reach": 1.0,
+            "score": 1.0
+          }
+        }
+      },
+      "rubric": {
+        "cross_doc_hits": 1.0,
+        "lineage": 1.0,
+        "multi_hop_reach": 1.0,
+        "score": 1.0
+      },
+      "scale": 10,
+      "seed": 42,
+      "speed": {
+        "max_seconds": 0.003953709005145356,
+        "median_seconds": 0.0038971670146565884,
+        "min_seconds": 0.0038496660126838833,
+        "n": 5,
+        "p95_seconds": 0.003953709005145356,
+        "samples_seconds": [
+          0.0038496660126838833,
+          0.0038733750116080046,
+          0.0038971670146565884,
+          0.003912457992555574,
+          0.003953709005145356
+        ]
+      }
+    }
+  ],
+  "tiers": {
+    "10": {
+      "result": {
+        "cost": null,
+        "cost_reason": "ClaudeDriver parses stream-json but emits assistant text only; no usage tokens available. cost_from_log returns None until the driver is extended to capture message.usage. Do not fabricate.",
+        "embedder_mode": "fake",
+        "fastembed_checksum": null,
+        "graph_cleanliness": {
+          "attr_conflict_nodes": 0,
+          "attr_conflict_rate": 0.0,
+          "attr_conflict_subscore": 1.0,
+          "connected_nodes": 51,
+          "cross_doc_connectivity": 1.0,
+          "duplicate_name_nodes": 2,
+          "duplicate_name_rate": 0.0392156862745098,
+          "duplicate_name_subscore": 0.9607843137254902,
+          "orphan_fraction": 0.0,
+          "orphan_nodes": 0,
+          "orphan_subscore": 1.0,
+          "pending_same_as": 0,
+          "pending_same_as_fraction": 0.0,
+          "pending_same_as_subscore": 1.0,
+          "score": 0.9941176470588234,
+          "tombstone_fraction": 0.0,
+          "tombstone_subscore": 1.0,
+          "tombstoned_nodes": 0,
+          "total_nodes": 51
+        },
+        "queries": {
+          "Meridian Labs": {
+            "expanded_edges": 64,
+            "expanded_nodes": 48,
+            "hits": [
+              "Meridian Labs",
+              "Solaris Foundation",
+              "document:512de4f9be-0000.md",
+              "Ember Studios",
+              "document:c9e2fbd061-0001.md",
+              "Cape Town",
+              "Open Source Summit",
+              "DataSummit 2024",
+              "Amara Okafor",
+              "James O'Brien"
+            ],
+            "rubric": {
+              "cross_doc_hits": 1.0,
+              "lineage": 1.0,
+              "multi_hop_reach": 1.0,
+              "score": 1.0
+            }
+          },
+          "Paris": {
+            "expanded_edges": 62,
+            "expanded_nodes": 47,
+            "hits": [
+              "document:gray-zone-paris.md",
+              "Paris",
+              "document:near-dup-elena-vasquez-a.md",
+              "Cape Town",
+              "document:dc3dd19d1b-0004.md",
+              "Climate Action Forum",
+              "Tom\u00e1s Rivera",
+              "Priya Sharma",
+              "Nairobi",
+              "Horizon Biotech"
+            ],
+            "rubric": {
+              "cross_doc_hits": 1.0,
+              "lineage": 1.0,
+              "multi_hop_reach": 1.0,
+              "score": 1.0
+            }
+          },
+          "knowledge graph": {
+            "expanded_edges": 69,
+            "expanded_nodes": 51,
+            "hits": [
+              "document:near-dup-elena-vasquez-a.md",
+              "Open Source Summit",
+              "Amara Okafor",
+              "DataSummit 2024",
+              "document:f9ed9cbbfa-0003.md",
+              "Stockholm",
+              "Reykjavik",
+              "Yuki Tanaka",
+              "document:gray-zone-paris.md",
+              "Fatima Al-Rashid"
+            ],
+            "rubric": {
+              "cross_doc_hits": 1.0,
+              "lineage": 1.0,
+              "multi_hop_reach": 1.0,
+              "score": 1.0
+            }
+          }
+        },
+        "rubric": {
+          "cross_doc_hits": 1.0,
+          "lineage": 1.0,
+          "multi_hop_reach": 1.0,
+          "score": 1.0
+        },
+        "scale": 10,
+        "seed": 42,
+        "speed": {
+          "max_seconds": 0.003953709005145356,
+          "median_seconds": 0.0038971670146565884,
+          "min_seconds": 0.0038496660126838833,
+          "n": 5,
+          "p95_seconds": 0.003953709005145356,
+          "samples_seconds": [
+            0.0038496660126838833,
+            0.0038733750116080046,
+            0.0038971670146565884,
+            0.003912457992555574,
+            0.003953709005145356
+          ]
+        }
+      },
+      "status": "measured"
+    },
+    "250": {
+      "reason": "NOT MEASURED: tier not run",
+      "status": "NOT_MEASURED"
+    },
+    "50": {
+      "reason": "NOT MEASURED: tier not run",
+      "status": "NOT_MEASURED"
+    }
+  },
+  "timestamp": "2026-07-27T01:44:31.258466+00:00"
+}

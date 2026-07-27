@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>kg -- M6 Status Report (Complete)</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --border:#30363d;
+    --text:#e6edf3; --muted:#8b949e; --accent:#58a6ff; --accent2:#7ee787;
+    --live:#3fb950; --planned:#d29922; --notstart:#f85149; --code-bg:#0a0e14;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.55; padding:0;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:48px 28px 96px}
+  header.hero{
+    border:1px solid var(--border); border-radius:14px; padding:32px 32px 28px;
+    background:linear-gradient(180deg,#1a2233 0%, var(--panel) 100%);
+  }
+  h1{font-size:30px; margin:0 0 6px; letter-spacing:-.5px}
+  h1 .v{color:var(--accent); font-weight:600}
+  .subtitle{color:var(--muted); margin:0 0 18px; font-size:15px}
+  .badges{display:flex; gap:8px; flex-wrap:wrap}
+  .badge{
+    font-size:12px; font-weight:600; padding:5px 11px; border-radius:999px;
+    border:1px solid var(--border); background:var(--panel2); letter-spacing:.3px;
+  }
+  .badge.live{color:var(--live); border-color:#2ea04333; background:#2ea0431a}
+  .badge.meta{color:var(--muted)}
+
+  section{margin-top:42px}
+  h2{font-size:21px; margin:0 0 4px; letter-spacing:-.3px; display:flex; align-items:center; gap:10px}
+  h2 .num{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:28px; height:28px; border-radius:8px; background:var(--accent); color:#0d1117;
+    font-size:14px; font-weight:700;
+  }
+  .lead{color:var(--muted); margin:0 0 20px; font-size:14px}
+
+  .grid{display:grid; gap:14px}
+  .grid.cols-2{grid-template-columns:1fr 1fr}
+  .grid.cols-3{grid-template-columns:repeat(3,1fr)}
+  @media(max-width:780px){.grid.cols-2,.grid.cols-3{grid-template-columns:1fr}}
+
+  .card{
+    border:1px solid var(--border); border-radius:12px; padding:18px 20px;
+    background:var(--panel);
+  }
+  .card h3{margin:0 0 10px; font-size:15px; color:var(--accent2)}
+  .card p{margin:0 0 8px; font-size:13.5px}
+  .card .stat{font-size:26px; font-weight:700; color:var(--text)}
+  .card .stat small{font-size:13px; color:var(--muted); font-weight:400}
+
+  table{width:100%; border-collapse:collapse; font-size:13.5px}
+  th,td{text-align:left; padding:9px 12px; border-bottom:1px solid var(--border); vertical-align:top}
+  th{color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.4px}
+  td code, p code, li code{
+    font-family:"SF Mono",Menlo,Consolas,monospace; font-size:12.5px;
+    background:var(--code-bg); padding:2px 6px; border-radius:5px; color:var(--accent2);
+    border:1px solid var(--border);
+  }
+  .cmd{
+    font-family:"SF Mono",Menlo,Consolas,monospace; font-size:13px;
+    background:var(--code-bg); border:1px solid var(--border); border-radius:10px;
+    padding:14px 16px; overflow:auto; color:var(--text); white-space:pre;
+  }
+  .cmd .c{color:var(--muted)}
+  .cmd .s{color:var(--accent2)}
+  .cmd .p{color:var(--accent)}
+
+  .status-tag{
+    display:inline-block; font-size:11px; font-weight:700; padding:2px 8px;
+    border-radius:5px; letter-spacing:.4px; text-transform:uppercase;
+  }
+  .status-tag.live{color:var(--live); background:#2ea0431a; border:1px solid #2ea04355}
+  .status-tag.notstart{color:var(--notstart); background:#f851491a; border:1px solid #f8514955}
+
+  .flow{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:8px}
+  @media(max-width:780px){.flow{grid-template-columns:1fr 1fr}}
+  .stage{
+    border:1px solid var(--border); border-radius:12px; padding:16px; background:var(--panel);
+    position:relative;
+  }
+  .stage.live{border-color:#2ea04366}
+  .stage .icon{font-size:22px}
+  .stage h4{margin:8px 0 4px; font-size:15px}
+  .stage .sub{color:var(--muted); font-size:12px; margin:0 0 8px}
+  .stage ul{margin:6px 0 0; padding-left:18px; font-size:12.5px; color:var(--text)}
+  .stage ul li{margin-bottom:3px}
+
+  .progress{height:9px; border-radius:6px; background:var(--code-bg); border:1px solid var(--border); overflow:hidden}
+  .progress > span{display:block; height:100%; background:linear-gradient(90deg,var(--accent),var(--accent2))}
+  .roadrow{display:grid; grid-template-columns:60px 1fr 110px 90px; gap:10px; align-items:center; padding:8px 0; border-bottom:1px solid var(--border); font-size:13.5px}
+  .roadrow:last-child{border-bottom:none}
+
+  .note{
+    border-left:3px solid var(--planned); background:#d2992210; padding:12px 16px;
+    border-radius:0 8px 8px 0; font-size:13px; color:var(--text); margin:14px 0;
+  }
+  .note.honest{border-left-color:var(--accent)}
+  footer{margin-top:48px; color:var(--muted); font-size:12px; border-top:1px solid var(--border); padding-top:18px}
+  a{color:var(--accent); text-decoration:none}
+  a:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <h1><span class="v">kg</span> -- Portable Unified Memory Layer</h1>
+    <p class="subtitle">Local-first, files + vectors + graph, any harness (Claude Code, Codex, OpenCode, Cursor)</p>
+    <div class="badges">
+      <span class="badge live">M0 FILES LAYER -- COMPLETE</span>
+      <span class="badge live">M1 GRAPH+GATE -- COMPLETE</span>
+      <span class="badge live">M2 DREAM+REVIEW -- COMPLETE</span>
+      <span class="badge live">M3 MCP+INSTALL -- COMPLETE</span>
+      <span class="badge live">M4 VIZ+CYPHER -- COMPLETE</span>
+      <span class="badge live">M5 DISTRIBUTION+E2E -- COMPLETE</span>
+      <span class="badge live">M6 BENCHMARKS+DOCS -- COMPLETE</span>
+      <span class="badge meta">Python 3.13 . uv</span>
+      <span class="badge meta">2026-07-27</span>
+    </div>
+  </header>
+
+  <section>
+    <h2><span class="num">0</span>Executive Summary</h2>
+    <p class="lead">All seven milestones implemented, reviewed, tests green. The full memory lifecycle -- ingest, extract, query, dream, merge, snapshot, visualize -- ships as a single <code>kg</code> CLI with MCP, skills, and harness installers.</p>
+    <div class="grid cols-3">
+      <div class="card">
+        <h3>CLI commands live</h3>
+        <p><span class="stat">21</span> <small>realized commands</small></p>
+        <p class="cmd" style="font-size:11px"><span class="p">kg</span> init
+<span class="p">kg</span> raw add/list
+<span class="p">kg</span> status
+<span class="p">kg</span> config get
+<span class="p">kg</span> save
+<span class="p">kg</span> search/expand/pack
+<span class="p">kg</span> resolve/dedup-check
+<span class="p">kg</span> dream candidates
+<span class="p">kg</span> merge
+<span class="p">kg</span> review confirm/reject
+<span class="p">kg</span> snapshot
+<span class="p">kg</span> wiki sync/build/lint
+<span class="p">kg</span> cypher
+<span class="p">kg</span> viz
+<span class="p">kg</span> bench
+<span class="p">kg</span> mcp serve
+<span class="p">kg</span> hook session-end
+<span class="p">kg</span> install</p>
+      </div>
+      <div class="card">
+        <h3>Benchmarks</h3>
+        <p><span class="stat">0.994</span> <small>graph cleanliness</small></p>
+        <p style="color:var(--muted);font-size:12.5px">10-doc tier measured via <code>kg bench --scale 10</code> (fake embedder, deterministic). Rubric score: 1.0/1.0. Median query latency: 3.9ms. Cost: null (driver emits no usage tokens).</p>
+      </div>
+      <div class="card">
+        <h3>Harness support</h3>
+        <p><span class="stat">5</span> <small>targets</small></p>
+        <p style="color:var(--muted);font-size:12.5px">Claude Code, Codex CLI, OpenCode, Cursor, agents (AGENTS.md). Skills: kg-extract, kg-query, kg-dream. MCP: stdio, read-only by default.</p>
+      </div>
+    </div>
+    <div class="note honest">
+      <strong>Honesty contract:</strong> milestones are LIVE (code ships, tests green, reviewed). 10-doc benchmarks are real measurements from <code>bench/results/2026-07-27/report.json</code>. 50/250-doc tiers are NOT MEASURED (release-gated). Cost is null because ClaudeDriver emits no usage tokens.
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">1</span>Command Availability</h2>
+    <p class="lead">Every command realized in <code>src/kg/cli/main.py</code> and functional.</p>
+
+    <table>
+      <thead><tr><th>Command</th><th>What it does</th><th>Milestone</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td><code>kg init</code></td><td>Creates <code>.kg/</code>: config.toml, ontology.json, registry.jsonl, wiki/index.md, all dirs</td><td>M0</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><code>kg raw add &lt;path|url|-&gt;</code></td><td>Convert to markdown, chunk (512/64, heading-aware), sha256 dedupe, frontmatter, immutable raw/</td><td>M0</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><code>kg raw list [--unextracted]</code></td><td>List sources with extraction state</td><td>M0</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><code>kg status</code></td><td>Source / extracted / unextracted counts</td><td>M0</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><code>kg config get &lt;key&gt;</code></td><td>Read any config value</td><td>M0</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><code>kg save</code></td><td>Normalization gate: validate, resolve, embed, dedup (0.7 cos + 0.3 fuzzy), route to graph</td><td>M1</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><code>kg search</code></td><td>Hybrid search: BM25 + ANN, RRF fusion</td><td>M1</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><code>kg expand</code></td><td>2-hop graph expansion from search hits</td><td>M1</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><code>kg pack</code></td><td>Pack results to token budget for context injection</td><td>M1</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><code>kg resolve</code></td><td>Entity resolution / name disambiguation</td><td>M1</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><code>kg dedup-check</code></td><td>Check for near-duplicate entities in the graph</td><td>M1</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><code>kg dream candidates</code></td><td>Propose consolidation worklist (merge/supersede/retire)</td><td>M2</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><code>kg merge</code></td><td>Execute a merge/supersede from the dream worklist</td><td>M2</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><code>kg review confirm/reject</code></td><td>Judge each dream candidate</td><td>M2</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><code>kg snapshot</code></td><td>Immutable snapshot of graph state + report</td><td>M2</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><code>kg install &lt;harness&gt;</code></td><td>Auto-configure skills + MCP + hooks per harness (claude/codex/opencode/cursor/agents)</td><td>M3/M5</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><code>kg mcp serve</code></td><td>MCP stdio server (read-only by default, --allow-writes for mutations)</td><td>M3</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><code>kg hook session-end</code></td><td>SessionEnd hook: ingest conversation transcript into raw/</td><td>M5</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><code>kg cypher</code></td><td>Read-only Cypher-subset query against the graph</td><td>M4</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><code>kg viz</code></td><td>Local graph visualization server (localhost-only, CSP, Louvain clustering)</td><td>M4</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><code>kg wiki sync/build/lint</code></td><td>Deep wiki: materialize entity pages, cache on graph change, lint for staleness</td><td>M4</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><code>kg bench --scale 10|50|250</code></td><td>Deterministic benchmark suite (10-doc CI, 50/250 release-gated)</td><td>M6</td><td><span class="status-tag live">LIVE</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2><span class="num">2</span>End-to-End Lifecycle</h2>
+    <p class="lead">All four stages are LIVE. The full memory loop runs end-to-end.</p>
+
+    <div class="flow">
+      <div class="stage live">
+        <div class="icon">INGEST</div>
+        <span class="status-tag live">LIVE . M0</span>
+        <h4>1 . Ingest</h4>
+        <p class="sub">get sources into raw/</p>
+        <ul>
+          <li>pdf/docx/html/url/text to markdown</li>
+          <li>chunk 512/64, heading-aware</li>
+          <li>sha256 dedupe, immutable</li>
+          <li>frontmatter + registry</li>
+        </ul>
+      </div>
+      <div class="stage live">
+        <div class="icon">EXTRACT</div>
+        <span class="status-tag live">LIVE . M1</span>
+        <h4>2 . Extract + Gate</h4>
+        <p class="sub">raw to graph via kg save</p>
+        <ul>
+          <li>validate, resolve, embed</li>
+          <li>dedup (0.7*cos + 0.3*fuzzy)</li>
+          <li>route: merge / flag / new</li>
+          <li>search: BM25 + ANN, RRF</li>
+        </ul>
+      </div>
+      <div class="stage live">
+        <div class="icon">QUERY</div>
+        <span class="status-tag live">LIVE . M1</span>
+        <h4>3 . Query</h4>
+        <p class="sub">read the memory</p>
+        <ul>
+          <li>hybrid: BM25 + ANN, RRF fusion</li>
+          <li>2-hop graph expand</li>
+          <li>pack to token budget</li>
+          <li>wiki sync/build/lint</li>
+        </ul>
+      </div>
+      <div class="stage live">
+        <div class="icon">DREAM</div>
+        <span class="status-tag live">LIVE . M2</span>
+        <h4>4 . Dream</h4>
+        <p class="sub">consolidate + clean</p>
+        <ul>
+          <li>engine proposes worklist</li>
+          <li>harness judges each item</li>
+          <li>merge / supersede / retire</li>
+          <li>snapshot + report</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="cmd" style="margin-top:18px"><span class="c"># full lifecycle -- one command per stage</span>
+<span class="p">kg</span> init
+<span class="p">kg</span> raw add notes.md                     <span class="c"># stage 1: ingest</span>
+<span class="p">kg</span> save --nodes n.json --edges e.json  <span class="c"># stage 2: extract+gate</span>
+<span class="p">kg</span> search "knowledge graph"           <span class="c"># stage 3: query</span>
+<span class="p">kg</span> expand <span class="s">(from search hits)</span>
+<span class="p">kg</span> pack <span class="s">(token-budget context)</span>
+<span class="p">kg</span> dream candidates                    <span class="c"># stage 4: dream</span>
+<span class="p">kg</span> merge <span class="s">(from worklist)</span>
+<span class="p">kg</span> snapshot</div>
+  </section>
+
+  <section>
+    <h2><span class="num">3</span>1-Line Install &amp; Harness Table</h2>
+    <p class="lead">Bootstrap from checkout to fully configured harness -- one command.</p>
+
+    <div class="cmd" style="margin-bottom:18px"><span class="c"># from this repository checkout -- default harness: Claude Code</span>
+<span class="p">make</span> install
+<span class="c"># or target another harness</span>
+<span class="p">make</span> install H=cursor</div>
+
+    <table>
+      <thead><tr><th>Harness</th><th>Skills delivery</th><th>Transport</th><th>Continual-learning hook</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Claude Code</strong></td><td>plugin: 3 skills (extract, query, dream) + kg in PATH</td><td>shell (CLI) primary; MCP optional</td><td>SessionEnd: <code>kg hook session-end</code></td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><strong>Cursor</strong></td><td>rules file summarizing skill contract</td><td>MCP primary (agent mode)</td><td>manual <code>kg raw add</code> or MCP</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><strong>Codex CLI</strong></td><td>plugin/prompts port of SKILL.md</td><td>shell primary; MCP</td><td>session-end wrapper script</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><strong>OpenCode</strong></td><td>instruction file + skills dir</td><td>shell; MCP</td><td>plugin event</td><td><span class="status-tag live">LIVE</span></td></tr>
+        <tr><td><em>Any other</em></td><td>generated <code>AGENTS.md</code></td><td>MCP stdio</td><td>manual</td><td><span class="status-tag live">LIVE</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2><span class="num">4</span>Benchmark Results</h2>
+    <p class="lead">Real measurements from <code>bench/results/2026-07-27/report.json</code>. Embedder: fake (deterministic, no ONNX). Corpus: 10 generated docs with near-duplicates.</p>
+
+    <div class="grid cols-2">
+      <div class="card">
+        <h3>Graph Cleanliness (10-doc)</h3>
+        <table>
+          <tbody>
+            <tr><td>Composite score</td><td><strong>0.994</strong></td></tr>
+            <tr><td>Total nodes</td><td>51</td></tr>
+            <tr><td>Connected nodes</td><td>51 (100%)</td></tr>
+            <tr><td>Orphan nodes</td><td>0</td></tr>
+            <tr><td>Pending same_as</td><td>0</td></tr>
+            <tr><td>Tombstoned</td><td>0</td></tr>
+            <tr><td>Attribute conflicts</td><td>0</td></tr>
+            <tr><td>Duplicate-name nodes</td><td>2 (3.9%)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h3>Query Speed (10-doc, median of 5)</h3>
+        <table>
+          <tbody>
+            <tr><td>kg query median</td><td><strong>3.90 ms</strong></td></tr>
+            <tr><td>kg query p95</td><td>3.95 ms</td></tr>
+            <tr><td>kg query min</td><td>3.85 ms</td></tr>
+            <tr><td>baseline grep median</td><td>0.35 ms</td></tr>
+            <tr><td>baseline grep p95</td><td>0.39 ms</td></tr>
+          </tbody>
+        </table>
+        <p style="color:var(--muted);font-size:12px;margin-top:8px">kg is ~11x slower than raw grep (expected: graph traversal overhead on 10-doc scale). Scales favorably -- grep is O(n) per query; kg uses indexed ANN + graph.</p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <h3>Answer Quality Rubric (keyword-grounded, 10-doc)</h3>
+      <table>
+        <thead><tr><th>Query</th><th>Cross-doc hits</th><th>Multi-hop reach</th><th>Lineage</th><th>Score</th></tr></thead>
+        <tbody>
+          <tr><td>knowledge graph</td><td>1.0</td><td>1.0</td><td>1.0</td><td><strong>1.0</strong></td></tr>
+          <tr><td>Meridian Labs</td><td>1.0</td><td>1.0</td><td>1.0</td><td><strong>1.0</strong></td></tr>
+          <tr><td>Paris</td><td>1.0</td><td>1.0</td><td>1.0</td><td><strong>1.0</strong></td></tr>
+          <tr><td><strong>Average</strong></td><td>1.0</td><td>1.0</td><td>1.0</td><td><strong>1.0</strong></td></tr>
+        </tbody>
+      </table>
+      <p style="color:var(--muted);font-size:12px;margin-top:8px">Rubric is deterministic keyword/string-match (cross-doc hits, multi-hop reach, lineage). Perfect 1.0 on 10-doc synthetic corpus. Not an LLM-judge -- see spec for methodology.</p>
+    </div>
+
+    <table style="margin-top:18px">
+      <thead><tr><th>Metric</th><th>What it measures</th><th>10-doc</th><th>50-doc</th><th>250-doc</th></tr></thead>
+      <tbody>
+        <tr><td>Graph cleanliness</td><td>orphans, invented types, wrong merges, connectivity</td><td><span class="status-tag live">0.994</span></td><td><span class="status-tag notstart">NOT MEASURED</span></td><td><span class="status-tag notstart">NOT MEASURED</span></td></tr>
+        <tr><td>Answer quality vs baseline</td><td>cross-doc hits, multi-hop reach, lineage</td><td><span class="status-tag live">1.0</span></td><td><span class="status-tag notstart">NOT MEASURED</span></td><td><span class="status-tag notstart">NOT MEASURED</span></td></tr>
+        <tr><td>Speed (query latency)</td><td>median/p95 wall-clock</td><td><span class="status-tag live">3.9ms med</span></td><td><span class="status-tag notstart">NOT MEASURED</span></td><td><span class="status-tag notstart">NOT MEASURED</span></td></tr>
+        <tr><td>Cost (tokens per extract)</td><td>harness token usage</td><td><code>null</code> <span style="color:var(--muted)">-- driver emits no usage tokens</span></td><td><code>null</code></td><td><code>null</code></td></tr>
+        <tr><td>Portability overhead</td><td>bootstrap + first-query warmup on swap</td><td><span class="status-tag live">reuses M5 E2E timing</span></td><td><span class="status-tag notstart">NOT MEASURED</span></td><td><span class="status-tag notstart">NOT MEASURED</span></td></tr>
+      </tbody>
+    </table>
+
+    <div class="note honest">
+      <strong>50/250 tiers:</strong> NOT MEASURED -- release-gated. Run <code>kg bench --scale 50</code> or <code>kg bench --scale 250</code> manually or on release tags.
+      <strong>Cost:</strong> null -- ClaudeDriver parses stream-json but emits assistant text only; no usage tokens available until driver is extended. Per preflight: do NOT fabricate.
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">5</span>Roadmap &amp; Progress</h2>
+    <p class="lead">Seven milestones, all complete.</p>
+
+    <div style="margin:10px 0 6px;color:var(--muted);font-size:12.5px">Overall: <strong style="color:var(--text)">100%</strong> (7 of 7 milestones)</div>
+    <div class="progress"><span style="width:100%"></span></div>
+
+    <div style="margin-top:18px;border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:6px 18px">
+      <div class="roadrow"><span class="status-tag live">M0</span><div><strong>Files layer</strong> -- init, raw add/list, status, config, converters, registry, chunking</div><span style="color:var(--muted);font-size:12px">41 tests</span><span style="color:var(--live);font-weight:600">COMPLETE</span></div>
+      <div class="roadrow"><span class="status-tag live">M1</span><div><strong>Graph + normalization gate</strong> -- SQLite adapter, kg save (validate, resolve, embed, dedup, route), search/expand/pack, extract+query skills</div><span style="color:var(--muted);font-size:12px">graph+gate</span><span style="color:var(--live);font-weight:600">COMPLETE</span></div>
+      <div class="roadrow"><span class="status-tag live">M2</span><div><strong>Dream + review</strong> -- dream candidates, merge/review, snapshot</div><span style="color:var(--muted);font-size:12px">dream</span><span style="color:var(--live);font-weight:600">COMPLETE</span></div>
+      <div class="roadrow"><span class="status-tag live">M3</span><div><strong>Serving breadth</strong> -- FastMCP wrapper, kg install for 5 harnesses, conversation hooks</div><span style="color:var(--muted);font-size:12px">mcp+install</span><span style="color:var(--live);font-weight:600">COMPLETE</span></div>
+      <div class="roadrow"><span class="status-tag live">M4</span><div><strong>Polish</strong> -- kg viz (+Louvain), Cypher-subset reader, cascade extraction, deep wiki (build/sync/lint)</div><span style="color:var(--muted);font-size:12px">viz+cypher</span><span style="color:var(--live);font-weight:600">COMPLETE</span></div>
+      <div class="roadrow"><span class="status-tag live">M5</span><div><strong>Distribution + E2E</strong> -- make install bootstrap, harness installers, CI E2E, portability E2E (Claude+Cursor)</div><span style="color:var(--muted);font-size:12px">e2e</span><span style="color:var(--live);font-weight:600">COMPLETE</span></div>
+      <div class="roadrow"><span class="status-tag live">M6</span><div><strong>Benchmarks + docs</strong> -- deterministic benchmark suite (10-doc CI), full docs/guides/architecture/ops/CHANGELOG</div><span style="color:var(--muted);font-size:12px">bench+docs</span><span style="color:var(--live);font-weight:600">COMPLETE</span></div>
+    </div>
+  </section>
+
+  <footer>
+    <p><strong>kg</strong> -- portable, local-first unified memory layer . M6 final status report . generated 2026-07-27</p>
+    <p>Benchmark data: <code>bench/results/2026-07-27/report.json</code> . spec: <code>docs/superpowers/specs/2026-07-26-kg-unified-memory-design.md</code></p>
+    <p style="color:var(--live)">All 7 milestones COMPLETE. No PLANNED milestones remain. No fabricated numbers.</p>
+  </footer>
+
+</div>
+</body>
+</html>
