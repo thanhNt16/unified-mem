@@ -7,7 +7,7 @@ without network access.
 ## Quick start
 
 ```bash
-# Full Python test suite (798 tests)
+# Full Python test suite (798 collected: 795 passed, 3 skipped)
 uv run pytest
 
 # CBM comparative evaluation (kg vs codebase-memory-mcp pattern baseline)

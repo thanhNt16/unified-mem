@@ -6,7 +6,7 @@ and judgment; the `kg` engine does deterministic storage, matching, and search.
 
 > **Status:** M0–M6 + graph-aware query shipped — files + vectors + graph + MCP
 > + installers + portability E2E + benchmarks + graph-aware hybrid search
-> (Recall@10 = 1.00) + 220× scale fix to 100k nodes. 798 tests pass.
+> (Recall@10 = 1.00) + 220× scale fix to 100k nodes. 795 passed, 3 skipped.
 > Realized commands: `init`, `raw add/list`, `status`, `config`, `save`,
 > `search`, `expand`, `pack`, `resolve`, `dedup-check`, `cypher`,
 > `wiki sync/build/lint`, `dream candidates`, `merge`, `review`, `snapshot`,
