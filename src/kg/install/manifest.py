@@ -47,6 +47,7 @@ class Harness(str, Enum):
     OPENCODE = "opencode"
     CURSOR = "cursor"
     AGENTS = "agents"
+    PI = "pi"
 
 
 class ArtifactKind(str, Enum):
