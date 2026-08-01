@@ -1,12 +1,218 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>kg · 10K Graph</title><style>
-:root{--bg:#07111f;--panel:#0d1b2e;--ink:#edf4ff;--muted:#95a9c3;--line:#1c3553;--accent:#62d4a8}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px system-ui,-apple-system,sans-serif}header{padding:18px 18px 10px}h1{font-size:18px;margin:0}p{margin:5px 0;color:var(--muted);font-size:13px}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:10px 18px}.stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px;font-size:17px;font-weight:700}.stat small{display:block;color:var(--muted);font-size:10px;font-weight:500;text-transform:uppercase}main{padding:0 12px}canvas{width:100%;height:58vh;background:#091726;border:1px solid var(--line);border-radius:14px;touch-action:none}.controls{display:flex;gap:8px;padding:12px 6px;flex-wrap:wrap}button,select{background:var(--panel);border:1px solid var(--line);border-radius:8px;color:var(--ink);padding:9px 11px;font:inherit}.note{padding:0 18px 18px;color:var(--muted);font-size:12px}.legend{display:flex;gap:10px;flex-wrap:wrap;padding:0 18px 10px;font-size:11px;color:var(--muted)}.dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:4px}@media(min-width:700px){main{max-width:900px;margin:auto}canvas{height:65vh}}
-</style></head><body><header><h1>kg · 10,000-node graph</h1><p>Dense graph, rendered safely as cluster overview. Tap a cluster for detail.</p></header><section class="stats"><div class="stat" id="nodes"><small>Nodes</small>10,000</div><div class="stat" id="edges"><small>Edges</small>150,000</div><div class="stat" id="frame"><small>Render</small>—</div></section><div class="legend" id="legend"></div><main><canvas id="graph"></canvas><div class="controls"><select id="cluster"><option value="all">Cluster overview</option></select><button id="reset">Reset</button><button id="regen">Regenerate</button></div></main><div class="note" id="note">Overview renders 67 aggregate nodes. Detail view caps to 250 nodes / 1,000 edges.</div><script>
-const C=67,N=10000,E=150000,canvas=document.querySelector('#graph'),ctx=canvas.getContext('2d'),sel=document.querySelector('#cluster'),colors=['#62d4a8','#79b8ff','#f7b267','#d595ff','#ff7d9c','#55d6d6','#d8c463'];let clusters=[];
-function rng(i){let x=Math.sin(i*12.9898)*43758.5453;return x-Math.floor(x)}
-function make(){clusters=Array.from({length:C},(_,i)=>({i,n:Math.floor(N/C)+(i< N%C),x:.1+rng(i)*.8,y:.1+rng(i+99)*.8,c:colors[i%colors.length]}));sel.innerHTML='<option value="all">Cluster overview</option>'+clusters.map(x=>`<option value="${x.i}">Cluster ${x.i+1} · ${x.n} nodes</option>`).join('');document.querySelector('#legend').innerHTML=colors.map((c,i)=>`<span><i class="dot" style="background:${c}"></i>Group ${i+1}</span>`).join('');draw()}
-function resize(){let d=devicePixelRatio||1,r=canvas.getBoundingClientRect();canvas.width=r.width*d;canvas.height=r.height*d;ctx.setTransform(d,0,0,d,0,0);draw()}
-function draw(){if(!canvas.width)return;let t=performance.now(),r=canvas.getBoundingClientRect(),w=r.width,h=r.height,mode=sel.value;ctx.clearRect(0,0,w,h);ctx.fillStyle='#091726';ctx.fillRect(0,0,w,h);if(mode==='all'){ctx.globalAlpha=.28;ctx.strokeStyle='#426585';for(let i=0;i<280;i++){let a=clusters[i%C],b=clusters[(i*13+7)%C];ctx.beginPath();ctx.moveTo(a.x*w,a.y*h);ctx.lineTo(b.x*w,b.y*h);ctx.stroke()}ctx.globalAlpha=1;for(let a of clusters){let rad=5+Math.sqrt(a.n)*.85;ctx.fillStyle=a.c;ctx.beginPath();ctx.arc(a.x*w,a.y*h,rad,0,7);ctx.fill();ctx.fillStyle='#dce8f7';ctx.font='11px system-ui';ctx.fillText(String(a.i+1),a.x*w+rad+3,a.y*h+3)}}else{let c=clusters[+mode],count=Math.min(250,c.n);ctx.globalAlpha=.22;ctx.strokeStyle=c.c;for(let i=0;i<1000;i++){let a=i%count,b=(i*17+11)%count;let ax=(.5+(rng(a+c.i*300)-.5)*.82)*w,ay=(.5+(rng(a+77+c.i*300)-.5)*.82)*h,bx=(.5+(rng(b+c.i*300)-.5)*.82)*w,by=(.5+(rng(b+77+c.i*300)-.5)*.82)*h;ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(bx,by);ctx.stroke()}ctx.globalAlpha=1;ctx.fillStyle=c.c;for(let i=0;i<count;i++){let x=(.5+(rng(i+c.i*300)-.5)*.82)*w,y=(.5+(rng(i+77+c.i*300)-.5)*.82)*h;ctx.beginPath();ctx.arc(x,y,3,0,7);ctx.fill()}document.querySelector('#note').textContent=`Cluster ${c.i+1}: showing ${count} of ${c.n} nodes and 1,000 representative edges.`}document.querySelector('#frame').innerHTML='<small>Render</small>'+Math.round(performance.now()-t)+'ms'}
-canvas.addEventListener('click',e=>{if(sel.value!=='all')return;let r=canvas.getBoundingClientRect(),x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height,best=clusters.reduce((p,c)=>Math.hypot(c.x-x,c.y-y)<Math.hypot(p.x-x,p.y-y)?c:p,clusters[0]);sel.value=best.i;draw()});sel.onchange=draw;document.querySelector('#reset').onclick=()=>{sel.value='all';document.querySelector('#note').textContent='Overview renders 67 aggregate nodes. Detail view caps to 250 nodes / 1,000 edges.';draw()};document.querySelector('#regen').onclick=make;addEventListener('resize',resize);make();resize();
-</script></body></html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>kg · unified-mem graph</title>
+<style>
+:root{--bg:#07111f;--panel:#0d1b2e;--ink:#edf4ff;--muted:#95a9c3;--line:#1c3553;--accent:#62d4a8}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px system-ui,-apple-system,sans-serif}
+header{padding:16px 16px 6px}
+h1{font-size:17px;margin:0}
+p{margin:4px 0;color:var(--muted);font-size:12px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;padding:8px 16px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:8px;font-size:16px;font-weight:700}
+.stat small{display:block;color:var(--muted);font-size:9px;font-weight:600;text-transform:uppercase}
+main{padding:0 10px}
+canvas{width:100%;height:56vh;background:#091726;border:1px solid var(--line);border-radius:12px;touch-action:none;display:block}
+.controls{display:flex;gap:7px;padding:10px 4px;flex-wrap:wrap;align-items:center}
+button,select,input{background:var(--panel);border:1px solid var(--line);border-radius:7px;color:var(--ink);padding:8px 10px;font:inherit;font-size:13px}
+input{flex:1;min-width:120px}
+.note{padding:0 16px 14px;color:var(--muted);font-size:11px;line-height:1.4}
+.loading{padding:40px;text-align:center;color:var(--muted)}
+.legend{display:flex;gap:8px;flex-wrap:wrap;padding:0 16px 6px;font-size:10px;color:var(--muted)}
+@media(min-width:700px){main{max-width:900px;margin:auto}canvas{height:64vh}}
+</style>
+</head>
+<body>
+<header>
+<h1>kg · unified-mem knowledge graph</h1>
+<p id="sub">Real graph from <code>thanhNt16/unified-mem/.kg/kg.db</code></p>
+</header>
+<section class="stats">
+<div class="stat" id="nodes"><small>Nodes</small>—</div>
+<div class="stat" id="edges"><small>Edges</small>—</div>
+<div class="stat" id="frame"><small>Layout fps</small>—</div>
+</section>
+<div class="legend" id="legend"></div>
+<main>
+<canvas id="graph"></canvas>
+<div class="controls">
+<input id="search" placeholder="Search nodes…" autocomplete="off">
+<select id="cluster"></select>
+<button id="reset">Reset</button>
+<button id="reheat">Reheat</button>
+</div>
+</main>
+<div class="note" id="note">Drag canvas to pan · pinch/wheel to zoom · tap node for detail.</div>
+<div class="loading" id="load">Loading real graph data…</div>
+
+<script>
+const C = 8; // max legend color groups; clusters fold into these by hue
+const HUES = ['#62d4a8','#79b8ff','#f7b267','#d595ff','#ff7d9c','#55d6d6','#d8c463','#ff9d5c'];
+let G=null, nodes=[], edges=[], byId={}, view={x:0,y:0,s:1}, drag=null, W=0,H=0, anim=true, iteration=0;
+
+async function load(){
+  const r = await fetch('graph.json');
+  G = await r.json();
+  document.getElementById('load').style.display='none';
+  document.getElementById('nodes').innerHTML='<small>Nodes</small>'+G.nodes.length.toLocaleString();
+  document.getElementById('edges').innerHTML='<small>Edges</small>'+G.edges.length.toLocaleString();
+  // fold cluster ids into 8 hue groups deterministically
+  const cset=[...new Set(G.clusters.map(c=>c.id))].sort((a,b)=>a-b);
+  const clusterColor={};
+  cset.forEach((id,i)=>clusterColor[id]=HUES[i%HUES.length]);
+  nodes=G.nodes.map((n,i)=>({...n,
+    x:Math.random()*W, y:Math.random()*H, vx:0, vy:0,
+    color:clusterColor[n.cluster]||'#888',
+    deg:0
+  }));
+  byId={}; nodes.forEach(n=>byId[n.id]=n);
+  edges=G.edges.filter(e=>byId[e.source]&&byId[e.target]);
+  edges.forEach(e=>{byId[e.source].deg++; byId[e.target].deg++});
+  // cluster dropdown (top by node count)
+  const top=[...G.clusters].sort((a,b)=>b.count-a.count).slice(0,20);
+  document.getElementById('cluster').innerHTML='<option value="all">All clusters</option>'+
+    top.map(c=>`<option value="${c.id}">Cluster ${c.id} · ${c.count}</option>`).join('');
+  // legend
+  document.getElementById('legend').innerHTML=HUES.map((h,i)=>`<span><i style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${h};margin-right:3px"></i>G${i+1}</span>`).join('');
+  resize();
+  loop();
+}
+
+function resize(){
+  const d=devicePixelRatio||1, r=canvas.getBoundingClientRect();
+  canvas.width=r.width*d; canvas.height=r.height*d; ctx.setTransform(d,0,0,d,0,0);
+  W=r.width; H=r.height;
+}
+const canvas=document.querySelector('#graph'), ctx=canvas.getContext('2d');
+
+function filter(){
+  const q=document.getElementById('search').value.toLowerCase().trim();
+  const csel=document.getElementById('cluster').value;
+  nodes.forEach(n=>n.hidden=true);
+  nodes.forEach(n=>{
+    if(csel!=='all'&&String(n.cluster)!==csel)return;
+    if(q&&!n.name.toLowerCase().includes(q)&&!(n.path||'').toLowerCase().includes(q))return;
+    n.hidden=false;
+  });
+}
+function step(){
+  if(!anim)return;
+  iteration++;
+  const cx=W/2, cy=H/2;
+  for(const n of nodes){
+    if(n.hidden)continue;
+    n.vx+=(cx-n.x)*0.0012; n.vy+=(cy-n.y)*0.0012;
+  }
+  const k=0.025, len=24;
+  for(const e of edges){
+    const a=byId[e.source], b=byId[e.target];
+    if(a.hidden||b.hidden)continue;
+    let dx=b.x-a.x, dy=b.y-a.y; const d=Math.hypot(dx,dy)||1;
+    const f=(d-len)*k;
+    a.vx+=f*dx/d; a.vy+=f*dy/d; b.vx-=f*dx/d; b.vy-=f*dy/d;
+  }
+  // grid-bucket repulsion: O(n) per bucket — safe at 1.7k nodes, 60fps on phone
+  const vis=nodes.filter(n=>!n.hidden);
+  const cell=46, g={};
+  for(const n of vis){
+    const gx=Math.floor(n.x/cell), gy=Math.floor(n.y/cell);
+    const key=gx+','+gy;
+    (g[key]=g[key]||[]).push(n);
+  }
+  for(const n of vis){
+    const gx=Math.floor(n.x/cell), gy=Math.floor(n.y/cell);
+    for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
+      const bucket=g[(gx+dx)+','+(gy+dy)];
+      if(!bucket)continue;
+      for(const m of bucket){
+        if(m===n)continue;
+        let ddx=m.x-n.x, ddy=m.y-n.y, d2=ddx*ddx+ddy*ddy;
+        if(d2<700){
+          const d=Math.sqrt(d2)||1, f=120/(d2+1);
+          n.vx-=f*ddx/d; n.vy-=f*ddy/d;
+        }
+      }
+    }
+  }
+  for(const n of nodes){
+    if(n.hidden)continue;
+    n.vx*=0.84; n.vy*=0.84; n.x+=n.vx; n.y+=n.vy;
+    n.x=Math.max(8,Math.min(W-8,n.x)); n.y=Math.max(8,Math.min(H-8,n.y));
+  }
+  if(iteration>600){anim=false;}
+}
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#091726'; ctx.fillRect(0,0,W,H);
+  ctx.save();
+  ctx.translate(view.x,view.y); ctx.scale(view.s,view.s);
+  // edges
+  ctx.globalAlpha=0.18; ctx.strokeStyle='#426585'; ctx.lineWidth=1;
+  ctx.beginPath();
+  for(const e of edges){
+    const a=byId[e.source], b=byId[e.target];
+    if(a.hidden||b.hidden)continue;
+    ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
+  }
+  ctx.stroke();
+  // nodes
+  ctx.globalAlpha=1;
+  for(const n of nodes){
+    if(n.hidden)continue;
+    const r=2+Math.min(5,Math.sqrt(n.deg)*0.9);
+    ctx.fillStyle=n.color;
+    ctx.beginPath(); ctx.arc(n.x,n.y,r,0,7); ctx.fill();
+  }
+  ctx.restore();
+}
+let frames=0, lastT=performance.now();
+function loop(){
+  step();
+  draw();
+  frames++;
+  const now=performance.now();
+  if(now-lastT>500){
+    document.getElementById('frame').innerHTML='<small>Fps</small>'+Math.round(frames*1000/(now-lastT));
+    frames=0; lastT=now;
+  }
+  if(anim)requestAnimationFrame(loop);
+}
+
+// pan / zoom
+canvas.addEventListener('pointerdown',e=>{drag={x:e.clientX-view.x,y:e.clientY-view.y,id:e.pointerId};canvas.setPointerCapture(e.pointerId)});
+canvas.addEventListener('pointermove',e=>{if(drag&&drag.id===e.pointerId){view.x=e.clientX-drag.x;view.y=e.clientY-drag.y;draw()}});
+canvas.addEventListener('pointerup',e=>{drag=null});
+canvas.addEventListener('pointerleave',e=>{drag=null});
+canvas.addEventListener('wheel',e=>{e.preventDefault();const f=e.deltaY<0?1.12:0.89;view.s*=f;view.s=Math.max(0.2,Math.min(5,view.s));draw()},{passive:false});
+
+// tap node
+let tapStart=null;
+canvas.addEventListener('pointerdown',e=>tapStart={x:e.clientX,y:e.clientY});
+canvas.addEventListener('pointerup',e=>{
+  if(!tapStart)return; const moved=Math.hypot(e.clientX-tapStart.x,e.clientY-tapStart.y);
+  tapStart=null; if(moved>5)return;
+  const r=canvas.getBoundingClientRect();
+  const x=(e.clientX-r.left-view.x)/view.s, y=(e.clientY-r.top-view.y)/view.s;
+  let best=null,bd=14/view.s;
+  for(const n of nodes){if(n.hidden)continue;const d=Math.hypot(n.x-x,n.y-y);if(d<bd){bd=d;best=n}}
+  if(best){
+    document.getElementById('note').innerHTML=`<b style="color:${best.color}">${esc(best.name)}</b> <small>(${best.type}${best.subtype?'/'+best.subtype:''})</small><br>cluster ${best.cluster} · degree ${best.deg}${best.path?' · '+esc(best.path):''}${best.summary?'<br>'+esc(best.summary):''}`;
+  }
+});
+
+function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+
+document.getElementById('search').addEventListener('input',()=>{filter();draw()});
+document.getElementById('cluster').addEventListener('change',()=>{filter();draw()});
+document.getElementById('reset').onclick=()=>{document.getElementById('search').value='';document.getElementById('cluster').value='all';view={x:0,y:0,s:1};filter();draw()};
+document.getElementById('reheat').onclick=()=>{nodes.forEach(n=>{n.x=Math.random()*W;n.y=Math.random()*H;n.vx=0;n.vy=0});iteration=0;if(!anim){anim=true;loop()}};
+
+addEventListener('resize',()=>{resize();draw()});
+resize();
+load();
+</script>
+</body>
+</html>
