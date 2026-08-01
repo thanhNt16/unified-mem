@@ -7,6 +7,8 @@ export interface GraphNode {
   label: string;
   name: string;
   qualified_name?: string;
+  sourceId: string;
+  summary?: string;
   size: number;
   color: string;
   cluster: number;
@@ -23,4 +25,5 @@ export interface GraphEdge {
 export interface GraphData {
   nodes: GraphNode[];
   edges: GraphEdge[];
+  adjacency: Map<number, Set<number>>;
 }

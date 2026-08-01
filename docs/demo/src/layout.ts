@@ -12,6 +12,7 @@ interface RawNode {
   subtype?: string;
   cluster: number;
   path?: string;
+  summary?: string;
 }
 
 interface RawGraph {
@@ -59,12 +60,14 @@ export function transform(raw: RawGraph): GraphData {
     const hue = HUES[Math.abs(n.cluster) % HUES.length];
     nodes.push({
       id: i,
+      sourceId: n.id,
       x: cx + local[0],
       y: cy + local[1],
       z: cz + local[2],
       label: n.name,
       name: n.name,
       qualified_name: n.path,
+      summary: n.summary,
       size: 1.5 + Math.min(6, Math.sqrt(deg) * 1.1),
       color: deg > 8 ? "#79b8ff" : hue, // high-degree → blue hub glow
       cluster: n.cluster,
@@ -74,14 +77,21 @@ export function transform(raw: RawGraph): GraphData {
   });
 
   const edges: GraphEdge[] = [];
+  const adjacency = new Map<number, Set<number>>();
   for (const e of raw.edges) {
     const source = idIndex.get(e.source);
     const target = idIndex.get(e.target);
     if (source === undefined || target === undefined) continue;
     edges.push({ source, target, type: e.type });
+    const sourceNeighbors = adjacency.get(source) ?? new Set<number>();
+    sourceNeighbors.add(target);
+    adjacency.set(source, sourceNeighbors);
+    const targetNeighbors = adjacency.get(target) ?? new Set<number>();
+    targetNeighbors.add(source);
+    adjacency.set(target, targetNeighbors);
   }
 
-  return { nodes, edges };
+  return { nodes, edges, adjacency };
 }
 
 function fibPoint(i: number, total: number, radius: number): [number, number, number] {

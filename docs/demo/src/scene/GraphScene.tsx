@@ -1,5 +1,4 @@
 // Adapted from DeusData/codebase-memory-mcp graph-ui (MIT).
-import { useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
@@ -10,27 +9,29 @@ import { NodeCloud } from "./NodeCloud";
 interface Props {
   data: GraphData;
   highlightedIds: Set<number> | null;
+  onHover: (node: GraphNode | null) => void;
   onNodeClick: (node: GraphNode) => void;
 }
 
-export function GraphScene({ data, highlightedIds, onNodeClick }: Props) {
-  const [hovered, setHovered] = useState<GraphNode | null>(null);
-
+export function GraphScene({ data, highlightedIds, onHover, onNodeClick }: Props) {
   return (
     <div className="scene">
       <Canvas
         camera={{ position: [0, 0, 820], fov: 50, near: 0.1, far: 100000 }}
         dpr={[1, 1.5]}
         gl={{ antialias: false, alpha: false, powerPreference: "high-performance" }}
+        onPointerMissed={() => onHover(null)}
       >
         <color attach="background" args={["#06090f"]} />
         <ambientLight intensity={0.5} />
         <pointLight position={[500, 500, 500]} intensity={0.6} />
-        <EdgeLines nodes={data.nodes} edges={data.edges} highlightedIds={highlightedIds} />
+        {/* Keep dense edge geometry static; rebuilding 34k lines on every hover
+            causes frame spikes. NodeCloud carries interactive highlighting. */}
+        <EdgeLines nodes={data.nodes} edges={data.edges} highlightedIds={null} />
         <NodeCloud
           nodes={data.nodes}
           highlightedIds={highlightedIds}
-          onHover={setHovered}
+          onHover={onHover}
           onClick={onNodeClick}
         />
         <EffectComposer multisampling={0}>
@@ -47,12 +48,6 @@ export function GraphScene({ data, highlightedIds, onNodeClick }: Props) {
           autoRotateSpeed={0.25}
         />
       </Canvas>
-      {hovered && (
-        <div className="tooltip">
-          <strong>{hovered.name}</strong><br />
-          {hovered.subtype} · degree {hovered.deg} · cluster {hovered.cluster}
-        </div>
-      )}
     </div>
   );
 }

@@ -37,19 +37,18 @@ export function NodeCloud({ nodes, highlightedIds, onHover, onClick }: Props) {
   useEffect(() => {
     const mesh = meshRef.current;
     if (!mesh) return;
-    const hasHighlight = highlightedIds && highlightedIds.size > 0;
+    // Positions/scales are static. Highlighting updates only the compact color
+    // buffer, avoiding 10k matrix writes on every pointer movement.
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
       tempObj.position.set(node.x, node.y, node.z);
-      const selected = !hasHighlight || highlightedIds.has(node.id);
-      const scale = node.size * (selected ? 0.55 : 0.25);
-      tempObj.scale.setScalar(scale);
+      tempObj.scale.setScalar(node.size * 0.55);
       tempObj.updateMatrix();
       mesh.setMatrixAt(i, tempObj.matrix);
     }
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
-  }, [nodes, highlightedIds, tempObj]);
+  }, [nodes, tempObj]);
 
   return (
     <instancedMesh

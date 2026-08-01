@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && cp graph.json dist/graph.json",
+    "build": "tsc -b && vite build && cp graph.json graph-stress.json dist/",
     "preview": "vite preview"
   },
   "dependencies": {

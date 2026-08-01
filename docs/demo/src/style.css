@@ -57,6 +57,38 @@ input { flex: 1; min-width: 120px; }
 }
 .note { padding: 10px 16px 4px; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .loading { padding: 40px; text-align: center; color: var(--muted); }
+.detail-panel {
+  margin: 6px 16px 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+.detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.detail-head button {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.detail-panel dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 3px 10px;
+  margin: 0;
+}
+.detail-panel dt { color: var(--muted); }
+.detail-panel dd { margin: 0; word-break: break-word; }
+.detail-panel .mono { font-family: ui-monospace, monospace; font-size: 11px; }
 .attribution {
   padding: 4px 16px 16px;
   color: var(--muted);
@@ -64,6 +96,6 @@ input { flex: 1; min-width: 120px; }
 }
 .attribution a { color: var(--muted); }
 @media (min-width: 700px) {
-  main, header, .controls, .note, .attribution { max-width: 900px; margin-left: auto; margin-right: auto; }
+  main, header, .controls, .note, .detail-panel, .attribution { max-width: 900px; margin-left: auto; margin-right: auto; }
   .scene { max-width: 900px; margin-left: auto; margin-right: auto; height: 64vh; }
 }
