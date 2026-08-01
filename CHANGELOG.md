@@ -3,6 +3,31 @@
 Per-milestone changes to kg. Realized commands only; deferred features are
 flagged in [the architecture overview](docs/architecture/overview.md).
 
+## [M6b] — 2026-08-01 — Graph-Aware Query, Scale Fixes, 3D Demo, CBM Patterns
+
+- **Added** `kg query "<q>" [--intent find|trace|explain]` — graph-aware hybrid
+  search. Intent classifier (LLM + heuristic fallback) selects graph-stream
+  depth; `diversify_by_source` + `adaptive_budget` pack context; note writer +
+  token capture. Recall@5/10 = 1.00, MRR 0.96 (16.7× semantic recall vs grep).
+- **Added** recall benchmark (`bench/recall.py`) + comparative baseline dimension
+  wired into `bench/runners.py`/`reporter.py`.
+- **Fixed** scale to 100k nodes: batched transactions + `executemany` (build
+  749s→3.4s, **220×**), FTS bulk-skip-delete (O(N²)→O(N)), indexed dedup,
+  materialized community cache (`/graph.json` 9.6s→131ms hot, **73×**), SQL viz
+  aggregation, budget-aware traversal with recursive `LIMIT`.
+- **Added** CBM-inspired indexing patterns: content-addressed
+  `FileHashRegistry` (`src/kg/file_hashes.py`) skip-unchanged extraction, and
+  `IndexPlan`/`plan_index` (`src/kg/index.py`) staged rebuild planning.
+- **Added** 3D graph visualization demo (`docs/demo/`, deployed to GitHub Pages)
+  adapted from [codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp)
+  (MIT, DeusData). Two datasets: real repo (1,774 nodes / 1,598 edges) and
+  synthetic stress (10,000 nodes / 33,917 edges). Neighbor-aware hover
+  highlight, click-to-detail panel.
+- **Added** `kg viz [--port 9749]` materialized community cache (generation
+  counter + `node_clusters` table).
+- **Docs** consolidated: current status report, benchmark guide rewrite, stale
+  completed plans/research proposals removed. 798 tests pass.
+
 ## [M6] — 2026-07-27 — Benchmarks & Docs
 
 - **Added** benchmark suite (`bench/`): deterministic corpus generator (10/50/250-doc scales, seeded), graph-cleanliness metrics, keyword-grounded answer-quality rubric, baseline (grep) vs kg runners, honest reporter. No fabricated numbers — only measured values; unrun tiers marked NOT_MEASURED.

@@ -110,4 +110,3 @@ Instead:
 | `.planning/intel/db-duckdb-vss.md` | DuckDB+VSS evaluation |
 | `.planning/intel/db-graph-kuzu-graphiti.md` | KuzuDB + Graphiti evaluation |
 | `.planning/intel/db-codebase-memory-mcp.md` | codebase-memory-mcp engine extraction |
-| `.planning/intel/SCALE-ROADMAP.md` | Scale fix roadmap (P0-P3, implemented) |

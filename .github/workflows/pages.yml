@@ -2,7 +2,7 @@ name: Deploy graph demo
 on:
   push:
     branches: [main]
-    paths: [docs/demo/**, .github/workflows/pages.yml, bench/export_demo_graph.py]
+    paths: [docs/demo/**, .github/workflows/pages.yml]
   workflow_dispatch:
 permissions:
   contents: read

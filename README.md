@@ -4,16 +4,18 @@ Portable, local-first unified memory layer — **files + vectors + graph** — f
 harness (Claude Code, Codex, OpenCode, Cursor). The harness LLM does extraction
 and judgment; the `kg` engine does deterministic storage, matching, and search.
 
-> **Status:** M0–M5 ship — files + graph + MCP + installers + portability E2E.
+> **Status:** M0–M6 + graph-aware query shipped — files + vectors + graph + MCP
+> + installers + portability E2E + benchmarks + graph-aware hybrid search
+> (Recall@10 = 1.00) + 220× scale fix to 100k nodes. 798 tests pass.
 > Realized commands: `init`, `raw add/list`, `status`, `config`, `save`,
 > `search`, `expand`, `pack`, `resolve`, `dedup-check`, `cypher`,
 > `wiki sync/build/lint`, `dream candidates`, `merge`, `review`, `snapshot`,
-> `viz`, `install`, `mcp serve`, `hook session-end`.
-> Benchmarks land in M6. See
-> [the architecture overview](docs/architecture/overview.md) and
-> [the quickstart](docs/guides/quickstart.md), or
-> `docs/superpowers/specs/2026-07-26-kg-unified-memory-design.md` for the full
-> design.
+> `query`, `bench`, `viz`, `install`, `mcp serve`, `hook session-end`.
+> See [the current status report](docs/reports/2026-08-01-status.md),
+> [the benchmark guide](bench/BENCHMARKS.md), the
+> [architecture overview](docs/architecture/overview.md), and the
+> [quickstart](docs/guides/quickstart.md). Full design in
+> `docs/superpowers/specs/2026-07-26-kg-unified-memory-design.md`.
 
 ## Documentation
 
@@ -24,6 +26,9 @@ and judgment; the `kg` engine does deterministic storage, matching, and search.
 - [Runbook](docs/ops/runbook.md) — snapshot/restore, dream/review, wiki sync.
 - [Troubleshooting](docs/ops/troubleshooting.md) — drift errors, MCP failures, missing skills.
 - Spec: `docs/superpowers/specs/2026-07-26-kg-unified-memory-design.md` (full design).
+- [Current status](docs/reports/2026-08-01-status.md) — shipped features, measured performance, remaining work.
+- [Benchmarks](bench/BENCHMARKS.md) — reproducible benchmark commands, dimensions, current results.
+- [3D graph demo](https://thanhnt16.github.io/unified-mem/) — real repo graph + 10k-node stress dataset.
 - [CHANGELOG.md](CHANGELOG.md) — milestone-by-milestone changes.
 
 ## Quick start (from this checkout)

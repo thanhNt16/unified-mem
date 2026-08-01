@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-26
 **Status:** Design approved, ready for implementation plan
-**Source:** `unified-memory-layer-design.md` (v0.1 draft), refined through brainstorming
+**Source:** v0.1 design draft, refined through brainstorming
 
 A local-first, per-project unified memory: markdown (raw), vectors (semantic), knowledge graph (POLE+O). Served to any harness (Claude Code, Codex, OpenCode, Cursor, + `AGENTS.md` fallback) through **skills (first-class intelligence)**, **MCP (standards bridge)**, and a **CLI (consistent command surface)**.
 
