@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && cp graph.json graph-stress.json dist/",
+    "check:data": "node scripts/check-data.mjs",
+    "build": "npm run check:data && tsc -b && vite build && cp graph.json graph-stress.json dist/",
     "preview": "vite preview"
   },
   "dependencies": {

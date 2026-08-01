@@ -43,18 +43,6 @@ input { flex: 1; min-width: 120px; }
   width: calc(100% - 20px);
 }
 .scene canvas { display: block; width: 100% !important; height: 100% !important; }
-.tooltip {
-  position: absolute;
-  left: 12px;
-  bottom: 12px;
-  background: rgba(13, 27, 46, 0.92);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 12px;
-  pointer-events: none;
-  max-width: 70%;
-}
 .note { padding: 10px 16px 4px; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .loading { padding: 40px; text-align: center; color: var(--muted); }
 .detail-panel {

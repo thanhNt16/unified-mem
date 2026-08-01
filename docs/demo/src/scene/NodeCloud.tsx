@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { GraphNode } from "../types";
-import { nodeGlowBoost } from "./density";
+import { nodeGlowBoost, nodeBoostScale } from "./density";
 
 interface Props {
   nodes: GraphNode[];
@@ -15,30 +15,20 @@ export function NodeCloud({ nodes, highlightedIds, onHover, onClick }: Props) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const tempObj = useMemo(() => new THREE.Object3D(), []);
   const tempColor = useMemo(() => new THREE.Color(), []);
+  const boost = nodeBoostScale(nodes.length);
   const detail: [number, number, number] = nodes.length <= 8000 ? [1, 20, 14] : [1, 10, 7];
 
-  const colors = useMemo(() => {
-    const arr = new Float32Array(nodes.length * 3);
-    const hasHighlight = highlightedIds && highlightedIds.size > 0;
-    for (let i = 0; i < nodes.length; i++) {
-      tempColor.set(nodes[i].color);
-      if (hasHighlight && !highlightedIds.has(nodes[i].id)) {
-        tempColor.multiplyScalar(0.08);
-      } else {
-        tempColor.multiplyScalar(nodeGlowBoost(tempColor.r, tempColor.g, tempColor.b));
-      }
-      arr[i * 3] = tempColor.r;
-      arr[i * 3 + 1] = tempColor.g;
-      arr[i * 3 + 2] = tempColor.b;
-    }
-    return arr;
-  }, [nodes, highlightedIds, tempColor]);
+  // Allocate ONE color buffer per dataset and mutate it in place on highlight
+  // changes, instead of reallocating a Float32Array + GPU buffer each hover.
+  const colorAttr = useMemo(
+    () => new THREE.InstancedBufferAttribute(new Float32Array(nodes.length * 3), 3),
+    [nodes],
+  );
 
+  // Static instance matrices (positions/scales never change with highlight).
   useEffect(() => {
     const mesh = meshRef.current;
     if (!mesh) return;
-    // Positions/scales are static. Highlighting updates only the compact color
-    // buffer, avoiding 10k matrix writes on every pointer movement.
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
       tempObj.position.set(node.x, node.y, node.z);
@@ -50,6 +40,36 @@ export function NodeCloud({ nodes, highlightedIds, onHover, onClick }: Props) {
     mesh.computeBoundingSphere();
   }, [nodes, tempObj]);
 
+  // Recolor in place on every highlight change; no buffer realloc.
+  useEffect(() => {
+    const hasHighlight = highlightedIds && highlightedIds.size > 0;
+    const arr = colorAttr.array as Float32Array;
+    for (let i = 0; i < nodes.length; i++) {
+      tempColor.set(nodes[i].color);
+      if (hasHighlight && !highlightedIds.has(nodes[i].id)) {
+        tempColor.multiplyScalar(0.08);
+      } else {
+        tempColor.multiplyScalar(1 + (nodeGlowBoost(tempColor.r, tempColor.g, tempColor.b) - 1) * boost);
+      }
+      arr[i * 3] = tempColor.r;
+      arr[i * 3 + 1] = tempColor.g;
+      arr[i * 3 + 2] = tempColor.b;
+    }
+    colorAttr.needsUpdate = true;
+  }, [nodes, highlightedIds, colorAttr, boost, tempColor]);
+
+  // One-frame hover-clear debounce: moving across adjacent instances fires
+  // pointerout before the next pointerover lands. Cancel a pending clear if a
+  // new hover arrives within the same frame.
+  const clearTimer = useRef<number | null>(null);
+  const cancelPendingClear = () => {
+    if (clearTimer.current !== null) {
+      cancelAnimationFrame(clearTimer.current);
+      clearTimer.current = null;
+    }
+  };
+  useEffect(() => cancelPendingClear, []);
+
   return (
     <instancedMesh
       key={nodes.length}
@@ -58,9 +78,16 @@ export function NodeCloud({ nodes, highlightedIds, onHover, onClick }: Props) {
       frustumCulled={false}
       onPointerOver={(event) => {
         event.stopPropagation();
+        cancelPendingClear();
         if (event.instanceId !== undefined) onHover(nodes[event.instanceId]);
       }}
-      onPointerOut={() => onHover(null)}
+      onPointerOut={() => {
+        cancelPendingClear();
+        clearTimer.current = requestAnimationFrame(() => {
+          clearTimer.current = null;
+          onHover(null);
+        });
+      }}
       onClick={(event) => {
         event.stopPropagation();
         if (event.instanceId !== undefined) onClick(nodes[event.instanceId]);
@@ -68,7 +95,7 @@ export function NodeCloud({ nodes, highlightedIds, onHover, onClick }: Props) {
     >
       <sphereGeometry args={detail} />
       <meshBasicMaterial vertexColors toneMapped={false} />
-      <instancedBufferAttribute attach="geometry-attributes-color" args={[colors, 3]} />
+      <primitive object={colorAttr} attach="geometry-attributes-color" />
     </instancedMesh>
   );
 }

@@ -30,9 +30,8 @@ def main():
 
     nodes = []
     for r in n_rows:
-        import json as _j
         try:
-            data = _j.loads(r["data"])
+            data = json.loads(r["data"])
         except Exception:
             data = {}
         nodes.append({

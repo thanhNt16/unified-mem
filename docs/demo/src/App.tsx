@@ -18,7 +18,6 @@ const DATASETS: Record<Dataset, { file: string; label: string }> = {
   stress: { file: "graph-stress.json", label: "Stress 10k / 34k edges" },
 };
 
-// Highlight = hovered/selected node + its direct neighbors.
 function neighborhoodSet(data: GraphData, focus: GraphNode | null): Set<number> | null {
   if (!focus) return null;
   const ids = new Set<number>([focus.id]);
@@ -29,6 +28,7 @@ function neighborhoodSet(data: GraphData, focus: GraphNode | null): Set<number> 
 
 export default function App() {
   const [dataset, setDataset] = useState<Dataset>("real");
+  const [retryGen, setRetryGen] = useState(0);
   const [raw, setRaw] = useState<RawGraph | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -37,19 +37,26 @@ export default function App() {
   const [selected, setSelected] = useState<GraphNode | null>(null);
 
   useEffect(() => {
+    const controller = new AbortController();
     setRaw(null);
     setErr(null);
     setSelected(null);
     setHovered(null);
-    fetch(DATASETS[dataset].file)
-      .then((r) => r.json())
+    fetch(DATASETS[dataset].file, { signal: controller.signal })
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then(setRaw)
-      .catch((e) => setErr(String(e)));
-  }, [dataset]);
+      .catch((e) => {
+        if (e.name === "AbortError") return; // superseded by a newer request
+        setErr(String(e));
+      });
+    return () => controller.abort();
+  }, [dataset, retryGen]);
 
   const data: GraphData | null = useMemo(() => (raw ? transform(raw) : null), [raw]);
 
-  // Filter highlight from search/cluster (dim everything not matching).
   const filterIds = useMemo(() => {
     if (!data) return null;
     const q = query.toLowerCase().trim();
@@ -63,17 +70,33 @@ export default function App() {
     return ids;
   }, [data, query, cluster]);
 
-  // Interaction highlight (hover or selected) takes priority over filter.
   const focus = hovered ?? selected;
   const interactionIds = useMemo(() => (data ? neighborhoodSet(data, focus) : null), [data, focus]);
-
   const highlightedIds = interactionIds ?? filterIds;
 
-  if (err) return <div className="loading">Failed to load graph: {err}</div>;
-  if (!data) return <div className="loading">Loading {DATASETS[dataset].label}…</div>;
+  // All clusters, sorted by size; native <select> handles ~200 options.
+  const clusters = useMemo(
+    () => [...(raw?.clusters ?? [])].sort((a, b) => b.count - a.count),
+    [raw],
+  );
 
-  const topClusters = [...(raw?.clusters ?? [])].sort((a, b) => b.count - a.count).slice(0, 20);
-  const focusNeighbors = focus ? (data.adjacency.get(focus.id)?.size ?? 0) : 0;
+  const clearFocus = () => {
+    setHovered(null);
+    setSelected(null);
+  };
+
+  const focusNeighbors = focus ? (data?.adjacency.get(focus.id)?.size ?? 0) : 0;
+
+  if (err) {
+    return (
+      <div className="loading">
+        Failed to load {DATASETS[dataset].label}: {err}
+        <br />
+        <button onClick={() => setRetryGen((g) => g + 1)}>Retry</button>
+      </div>
+    );
+  }
+  if (!data) return <div className="loading">Loading {DATASETS[dataset].label}…</div>;
 
   return (
     <>
@@ -97,7 +120,7 @@ export default function App() {
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search nodes…" autoComplete="off" />
         <select value={cluster} onChange={(e) => setCluster(e.target.value)}>
           <option value="all">All clusters</option>
-          {topClusters.map((c) => (
+          {clusters.map((c) => (
             <option key={c.id} value={c.id}>
               Cluster {c.id} · {c.count}
             </option>
@@ -107,14 +130,20 @@ export default function App() {
           onClick={() => {
             setQuery("");
             setCluster("all");
-            setSelected(null);
+            clearFocus();
           }}
         >
           Reset
         </button>
       </section>
 
-      <GraphScene data={data} highlightedIds={highlightedIds} onHover={setHovered} onNodeClick={setSelected} />
+      <GraphScene
+        data={data}
+        highlightedIds={highlightedIds}
+        onHover={setHovered}
+        onNodeClick={setSelected}
+        onBackgroundClick={clearFocus}
+      />
 
       <div className="note">
         {focus ? (
@@ -135,7 +164,7 @@ export default function App() {
         <div className="detail-panel">
           <div className="detail-head">
             <strong>{selected.name}</strong>
-            <button onClick={() => setSelected(null)} aria-label="Close">×</button>
+            <button onClick={clearFocus} aria-label="Close">×</button>
           </div>
           <dl>
             <dt>Type</dt>
