@@ -66,9 +66,12 @@ class Deduper:
         # candidates: vec top-k of same type
         cand = self.adapter.vec_search(qemb, k=10, type_filter=node.type)
 
-        # plus same canonical_name (exact-name siblings)
+        # plus same-type candidates via indexed columns (type, canonical_name).
+        # Replaces former full-table scan — O(N) → O(log N + K) at scale (10k+ nodes).
         rows = self.adapter.conn.execute(
-            "SELECT id, data FROM nodes WHERE status='active'"
+            "SELECT id, data FROM nodes WHERE status='active' AND type=? "
+            "ORDER BY id",
+            (node.type,),
         ).fetchall()
         cand_ids = {cid for cid, _ in cand}
         for r in rows:

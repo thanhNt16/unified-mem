@@ -7,7 +7,7 @@ import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
 
-from kg.community import louvain
+from kg.community import louvain_cached
 from kg.storage.base import StorageAdapter
 
 # Cap graph payload to keep browser-side perf bounded.
@@ -125,31 +125,34 @@ def _graph_payload(adapter: StorageAdapter) -> dict:
     truncated_nodes = len(n_rows) > _MAX_NODES
     n_rows = n_rows[:_MAX_NODES]
 
-    clusters = louvain(adapter)
+    clusters = louvain_cached(adapter)
     active_ids = {r["id"] for r in n_rows}
+    if not active_ids:
+        return {"nodes": [], "edges": [], "truncated_nodes": truncated_nodes,
+                "truncated_edges": False}
+    placeholders = ",".join("?" * len(active_ids))
 
-    # degree counts via active edges only
+    # Indexed endpoint aggregation bounded to the capped node set.
     deg: dict[str, int] = {}
+    for column in ("source", "target"):
+        rows = adapter.conn.execute(
+            f"SELECT {column}, COUNT(*) AS degree FROM edges "
+            f"WHERE status='active' AND {column} IN ({placeholders}) GROUP BY {column}",
+            list(active_ids),
+        ).fetchall()
+        for row in rows:
+            deg[row[column]] = deg.get(row[column], 0) + row["degree"]
+
     e_rows = adapter.conn.execute(
-        "SELECT source, target, data FROM edges WHERE status='active' ORDER BY id"
+        f"SELECT source, target, semantic_type FROM edges WHERE status='active' "
+        f"AND source IN ({placeholders}) AND target IN ({placeholders}) ORDER BY id LIMIT ?",
+        [*active_ids, *active_ids, _MAX_EDGES + 1],
     ).fetchall()
-    edges_out: list[dict] = []
-    truncated_edges = False
-    for r in e_rows:
-        s, t = r["source"], r["target"]
-        if s not in active_ids or t not in active_ids:
-            continue
-        deg[s] = deg.get(s, 0) + 1
-        deg[t] = deg.get(t, 0) + 1
-        try:
-            data = json.loads(r["data"])
-            sem = data.get("semantic_type", "")
-        except (ValueError, TypeError):
-            sem = ""
-        edges_out.append({"source": s, "target": t, "semantic_type": sem})
-        if len(edges_out) >= _MAX_EDGES:
-            truncated_edges = True
-            break
+    truncated_edges = len(e_rows) > _MAX_EDGES
+    edges_out = [
+        {"source": r["source"], "target": r["target"], "semantic_type": r["semantic_type"]}
+        for r in e_rows[:_MAX_EDGES]
+    ]
 
     def esc(s) -> str:
         return html.escape(str(s or ""))
@@ -175,6 +178,65 @@ def _graph_payload(adapter: StorageAdapter) -> dict:
         "edges": edges_out,
         "truncated_nodes": truncated_nodes,
         "truncated_edges": truncated_edges,
+    }
+
+
+def _cluster_payload(adapter: StorageAdapter) -> dict:
+    """Stage-1 coarse view: aggregate nodes by Louvain cluster.
+
+    Returns one synthetic node per community with member count + size-scaled
+    weight, so the browser can render an overview of 10k+ node graphs without
+    melting. Pairs with /graph.json (Stage-2 detail, capped at _MAX_NODES).
+    """
+    from kg.community import louvain_cached
+    clusters = louvain_cached(adapter)
+    if not clusters:
+        return {"clusters": [], "total_nodes": 0, "note": "empty graph"}
+
+    generation = adapter.generation()  # type: ignore[attr-defined]
+    # louvain_cached materializes this mapping. Keep only 50 member IDs per cluster.
+    members: dict[int, list[str]] = {}
+    counts: dict[int, int] = {}
+    for nid, cid in clusters.items():
+        counts[cid] = counts.get(cid, 0) + 1
+        if len(members.setdefault(cid, [])) < 50:
+            members[cid].append(nid)
+    if not counts:
+        return {"clusters": [], "total_nodes": 0, "note": "clusters not materialized yet"}
+
+    cluster_nodes = [
+        {
+            "id": f"cluster:{cid}",
+            "type": "cluster",
+            "name": f"Cluster {cid}",
+            "member_count": counts[cid],
+            "members": members[cid],
+        }
+        for cid in sorted(counts)
+    ]
+
+    # SQL aggregation for inter-cluster edges leverages cached cluster IDs.
+    inter_rows = adapter.conn.execute(
+        "SELECT MIN(ca.cluster_id, cb.cluster_id) AS a, "
+        "MAX(ca.cluster_id, cb.cluster_id) AS b, COUNT(*) AS w "
+        "FROM edges e "
+        "JOIN node_clusters ca ON ca.node_id = e.source "
+        "JOIN node_clusters cb ON cb.node_id = e.target "
+        "WHERE e.status='active' AND ca.generation=? AND cb.generation=? "
+        "AND ca.cluster_id != cb.cluster_id GROUP BY a, b ORDER BY w DESC",
+        (generation, generation),
+    ).fetchall()
+    cluster_edges = [
+        {"source": f"cluster:{r['a']}", "target": f"cluster:{r['b']}", "weight": r["w"]}
+        for r in inter_rows[:_MAX_EDGES]
+    ]
+    return {
+        "clusters": cluster_nodes,
+        "cluster_edges": cluster_edges,
+        "total_nodes": len(clusters),
+        "total_clusters": len(counts),
+        "note": (f"Coarse view: {len(counts)} clusters from {len(clusters)} nodes. "
+                 f"Use /graph.json for detail (capped at {_MAX_NODES} nodes)."),
     }
 
 
@@ -240,21 +302,23 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/app.js":
             self._send(200, _JS.encode("utf-8"), "application/javascript; charset=utf-8")
             return
-        if path == "/graph.json":
+        if path in {"/graph.json", "/clusters.json"}:
             adapter = self._adapter()
             try:
-                payload = _graph_payload(adapter)
+                etag = f'"{adapter.generation()}"'
+                if self.headers.get("If-None-Match") == etag:
+                    self._send(304, b"", "application/json; charset=utf-8", {"ETag": etag})
+                    return
+                payload = _graph_payload(adapter) if path == "/graph.json" else _cluster_payload(adapter)
+                body = json.dumps(payload).encode("utf-8")
+                if path == "/graph.json" and len(body) > _MAX_BYTES:
+                    body = json.dumps({"nodes": payload["nodes"][:500],
+                                       "edges": payload["edges"][:1000],
+                                       "truncated_nodes": True,
+                                       "truncated_edges": True}).encode("utf-8")
+                self._send(200, body, "application/json; charset=utf-8", {"ETag": etag})
             finally:
                 adapter.conn.close()
-            body = json.dumps(payload).encode("utf-8")
-            if len(body) > _MAX_BYTES:
-                # Truncate by sending nodes/edges only up to cap (already capped).
-                # If still over, send minimal stub.
-                stub = {"nodes": payload["nodes"][:500],
-                        "edges": payload["edges"][:1000],
-                        "truncated_nodes": True, "truncated_edges": True}
-                body = json.dumps(stub).encode("utf-8")
-            self._send(200, body, "application/json; charset=utf-8")
             return
         if path.startswith("/wiki/") and self.wiki_dir is not None:
             slug = path[len("/wiki/"):]

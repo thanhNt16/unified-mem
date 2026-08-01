@@ -59,6 +59,8 @@ from kg.cli import review as review_cmd  # noqa: E402
 from kg.cli import dream as dream_cmd  # noqa: E402
 from kg.cli import viz as viz_cmd  # noqa: E402
 from kg.cli import bench_cli as bench_cmd  # noqa: E402
+from kg.cli import query_cli as query_cli_cmd  # noqa: E402
+from kg.cli import index_cli as index_cmd  # noqa: E402
 
 app.command(name="snapshot")(snapshot_cmd.snapshot_cli)
 app.command(name="merge")(review_cmd.merge_cli)
@@ -66,6 +68,8 @@ app.add_typer(review_cmd.review_app, name="review")
 app.add_typer(dream_cmd.dream_app, name="dream")
 app.command(name="viz")(viz_cmd.viz_cli)
 app.command(name="bench")(bench_cmd.bench_cli)
+app.command(name="query")(query_cli_cmd.query_cli)
+app.add_typer(index_cmd.index_app, name="index")
 
 mcp_app = typer.Typer(help="Run the kg MCP server.")
 app.add_typer(mcp_app, name="mcp")

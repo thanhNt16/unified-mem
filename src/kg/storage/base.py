@@ -22,7 +22,8 @@ class StorageAdapter(ABC):
     @abstractmethod
     def neighbors(self, ids: list[str], depth: int = 1,
                   direction: str = "both",
-                  edge_types: list[str] | None = None) -> Subgraph: ...
+                  edge_types: list[str] | None = None,
+                  max_nodes: int = 500) -> Subgraph: ...
     @abstractmethod
     def fts_search(self, query: str, k: int = 10,
                    type_filter: str | None = None) -> list[tuple[str, float]]: ...

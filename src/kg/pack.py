@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import tiktoken
 
-from kg.storage.base import Subgraph
+from kg.storage.base import Subgraph, StorageAdapter
 from kg.traverse import degree_centrality
 
 _ENC = tiktoken.get_encoding("cl100k_base")
@@ -68,3 +68,49 @@ def pack(
         parts.append(block)
         used += tokens
     return "".join(parts)
+
+
+def diversify_by_source(
+    ranked: list[tuple[str, float]],
+    adapter: StorageAdapter,
+    *,
+    max_per_source: int = 3,
+) -> list[tuple[str, float]]:
+    """Cap nodes per source doc. Preserves input order. Skips unknown ids."""
+    seen_per_source: dict[str, int] = {}
+    out: list[tuple[str, float]] = []
+    for node_id, score in ranked:
+        node = adapter.get(node_id)
+        if node is None:
+            continue
+        src = node.sources[0]["doc"] if node.sources else "unknown"
+        count = seen_per_source.get(src, 0)
+        if count >= max_per_source:
+            continue
+        seen_per_source[src] = count + 1
+        out.append((node_id, score))
+    return out
+
+
+def adaptive_budget(config_budget: int, adapter: StorageAdapter) -> int:
+    """Scale token budget by graph density: sparse → boost, dense → trim."""
+    counts = adapter.count()
+    # adapter.count() counts all rows; spec asks for active only, so re-filter
+    # through the adapter's connection. This is the documented orchestrator path;
+    # backends without .conn must expose an active count via count(active=True).
+    conn = getattr(adapter, "conn", None)
+    if conn is not None:
+        n = conn.execute("SELECT COUNT(*) AS c FROM nodes WHERE status='active'").fetchone()["c"]
+        e = conn.execute("SELECT COUNT(*) AS c FROM edges WHERE status='active'").fetchone()["c"]
+    else:
+        n, e = counts.get("nodes", 0), counts.get("edges", 0)
+    if n == 0:
+        return config_budget
+    density = e / n
+    if density < 1.0:
+        scale = 1.2
+    elif density > 3.0:
+        scale = 0.7
+    else:
+        scale = 1.0
+    return int(config_budget * scale)

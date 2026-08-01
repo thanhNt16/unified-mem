@@ -24,10 +24,16 @@ def test_louvain_deterministic_two_cliques(tmp_path):
     assert first[ids[0]] != first[ids[3]]
 
 
-def test_louvain_node_cap_skips(tmp_path):
+def test_louvain_node_cap_per_component(tmp_path):
+    """Above cap, Louvain runs per connected component — returns real cluster
+    ids, not -1. With no edges, each node is its own component."""
     adapter = _adapter(tmp_path)
     adapter.upsert_nodes([
         Node(id=f"u:person:{i}", type="person", name=str(i))
         for i in range(5001)
     ])
-    assert set(louvain(adapter).values()) == {-1}
+    result = louvain(adapter)
+    # No edges → each node is a singleton cluster → 5001 distinct ids
+    assert len(result) == 5001
+    assert len(set(result.values())) == 5001
+    assert -1 not in result.values()

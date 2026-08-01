@@ -21,7 +21,9 @@ from bench.runners import (  # noqa: E402
     QUERIES,
     BaselineResult,
     RunResult,
+    build_indexed_adapter,
     run_baseline,
+    run_comparative,
     run_kg,
 )
 
@@ -245,3 +247,74 @@ def test_ten_doc_tier_fully_measured(corpus_dir: Path, project_dir: Path):
     assert result.speed["median_seconds"] > 0.0
     assert result.rubric["score"] is not None
     assert result.cost is None  # cost legitimately null at this tier
+
+
+# --- D3 (recall) + D4 (comparative) helpers ---------------------------------
+
+def test_build_indexed_adapter_returns_open_adapter(corpus_dir: Path, project_dir: Path):
+    """build_indexed_adapter returns open adapter that caller must close."""
+    adapter, embedder, cfg = build_indexed_adapter(corpus_dir, project_dir, scale=10)
+    try:
+        assert adapter is not None
+        assert embedder is not None
+        assert cfg is not None
+        from kg.search import hybrid_search
+        hits = hybrid_search(adapter, embedder, "test", mode="hybrid", k=5, config=cfg)
+        assert isinstance(hits, list)
+    finally:
+        adapter.conn.close()
+
+
+def test_run_comparative_returns_expected_structure(corpus_dir: Path, project_dir: Path):
+    """run_comparative returns dict with queries list + totals."""
+    from bench.runners import REPRESENTATIVE_QUERIES
+    result = run_comparative(
+        corpus_dir,
+        project_dir,
+        scale=10,
+        queries=REPRESENTATIVE_QUERIES[:2],
+    )
+    assert "queries" in result
+    assert "kg_total_hits" in result
+    assert "grep_total_hits" in result
+    assert isinstance(result["queries"], list)
+    assert len(result["queries"]) == 2
+    for row in result["queries"]:
+        assert "query" in row
+        assert "kg_hit_count" in row
+        assert "grep_hit_count" in row
+        assert "kg_ms" in row
+        assert "grep_ms" in row
+
+
+def test_render_report_includes_recall_and_comparative_sections(tmp_path: Path):
+    """render_report adds recall + comparative sections when data present."""
+    recall = {
+        "by_type": {"person": {"recall_at_5": 0.9, "recall_at_10": 0.95, "mrr": 0.88}},
+        "aggregate": {"recall_at_5": 0.9, "recall_at_10": 0.95, "mrr": 0.88, "total_queries": 10},
+        "k_values_tested": [5, 10],
+    }
+    comparative = {
+        "queries": [
+            {"query": "q1", "kg_hit_count": 3, "grep_hit_count": 5, "kg_ms": 1.0, "grep_ms": 2.0},
+        ],
+        "kg_total_hits": 3,
+        "grep_total_hits": 5,
+    }
+    out = render_report(
+        [], [], out_path=tmp_path, recall_result=recall, comparative_result=comparative
+    )
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert data["recall"] is not None
+    assert data["comparative"] is not None
+    md = (tmp_path / "report.md").read_text(encoding="utf-8")
+    assert "## Recall@k (D3)" in md
+    assert "## Comparative (D4)" in md
+
+
+def test_render_report_omits_recall_when_not_provided(tmp_path: Path):
+    """When recall/comparative are None, sections are absent."""
+    out = render_report([], [], out_path=tmp_path)
+    md = (tmp_path / "report.md").read_text(encoding="utf-8")
+    assert "## Recall@k (D3)" not in md
+    assert "## Comparative (D4)" not in md

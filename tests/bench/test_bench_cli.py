@@ -89,3 +89,69 @@ def test_makefile_has_bench_target():
     text = Makefile.read_text(encoding="utf-8")
     assert "bench:" in text
     assert "uv run kg bench --scale 10" in text
+
+
+def test_bench_cli_dimension_d3_writes_recall_section(tmp_path):
+    """`kg bench --dimension d3` runs recall@k benchmark and includes recall section in report."""
+    out_dir = tmp_path / "out"
+    result = runner.invoke(app, ["bench", "--scale", "10", "--dimension", "d3", "--out-dir", str(out_dir)])
+    assert result.exit_code == 0, f"output: {result.output}\nexc: {result.exception!r}"
+
+    report_json = out_dir / "report.json"
+    assert report_json.exists()
+
+    payload = json.loads(report_json.read_text(encoding="utf-8"))
+    assert "recall" in payload
+    assert payload["recall"] is not None
+    assert "aggregate" in payload["recall"]
+    agg = payload["recall"]["aggregate"]
+    assert "recall_at_5" in agg
+    assert "recall_at_10" in agg
+    assert "mrr" in agg
+
+    report_md = out_dir / "report.md"
+    md = report_md.read_text(encoding="utf-8")
+    assert "## Recall@k (D3)" in md
+
+
+def test_bench_cli_dimension_d4_writes_comparative_section(tmp_path):
+    """`kg bench --dimension d4` runs comparative benchmark and includes comparative section in report."""
+    out_dir = tmp_path / "out"
+    result = runner.invoke(app, ["bench", "--scale", "10", "--dimension", "d4", "--out-dir", str(out_dir)])
+    assert result.exit_code == 0, f"output: {result.output}\nexc: {result.exception!r}"
+
+    report_json = out_dir / "report.json"
+    assert report_json.exists()
+
+    payload = json.loads(report_json.read_text(encoding="utf-8"))
+    assert "comparative" in payload
+    assert payload["comparative"] is not None
+    assert "queries" in payload["comparative"]
+    assert "kg_total_hits" in payload["comparative"]
+    assert "grep_total_hits" in payload["comparative"]
+
+    report_md = out_dir / "report.md"
+    md = report_md.read_text(encoding="utf-8")
+    assert "## Comparative (D4)" in md
+
+
+def test_bench_cli_dimension_all_includes_both_sections(tmp_path):
+    """`kg bench --dimension all` (default) includes both recall and comparative sections."""
+    out_dir = tmp_path / "out"
+    result = runner.invoke(app, ["bench", "--scale", "10", "--dimension", "all", "--out-dir", str(out_dir)])
+    assert result.exit_code == 0, f"output: {result.output}\nexc: {result.exception!r}"
+
+    report_json = out_dir / "report.json"
+    payload = json.loads(report_json.read_text(encoding="utf-8"))
+
+    # Both dimensions present
+    assert "recall" in payload
+    assert payload["recall"] is not None
+    assert "comparative" in payload
+    assert payload["comparative"] is not None
+
+
+def test_bench_cli_invalid_dimension_rejected(tmp_path):
+    """--dimension xyz is rejected with non-zero exit."""
+    result = runner.invoke(app, ["bench", "--scale", "10", "--dimension", "xyz", "--out-dir", str(tmp_path)])
+    assert result.exit_code != 0

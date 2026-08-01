@@ -66,6 +66,8 @@ def convert_source(source: str, type: str | None, title: str | None) -> Converte
         if not Path(source).exists():
             raise FileNotFoundError(source)
         md = _convert_markitdown(source)
+        if kind == "docx" and not md.strip():
+            raise ValueError(f"DOCX conversion produced no content: {source}")
     else:
         raise ValueError(f"Unsupported source type: {kind!r}")
     resolved_title = title if title is not None else first_heading(md)

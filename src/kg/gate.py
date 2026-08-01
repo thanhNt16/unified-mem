@@ -108,6 +108,8 @@ class Gate:
             ["name", "summary", "attributes.subject", "attributes.predicate",
              "attributes.object"],
         )
+        nodes_to_upsert: list[Node] = []
+        edges_to_upsert: list[Edge] = []
 
         for en in node_stream:
             type_ = en["type"]
@@ -150,14 +152,14 @@ class Gate:
             elif dd.best_match_id and dd.score >= self.config.thresholds.dedup_flag:
                 candidate.id = allocate_node_id(
                     self.adapter, self.user_id, type_, name)
-                self.adapter.upsert_nodes([candidate])
-                self.adapter.upsert_edges([Edge(
+                nodes_to_upsert.append(candidate)
+                edges_to_upsert.append(Edge(
                     id=edge_id(candidate.id, "same_as", dd.best_match_id),
                     semantic_type="same_as",
                     summary=f"gray-zone {dd.score:.2f}",
                     confidence=dd.score,
                     status="pending",
-                )])
+                ))
                 settled_id = candidate.id
                 report.new_same_as += 1
                 report.decisions.append(Decision(
@@ -165,11 +167,16 @@ class Gate:
             else:
                 candidate.id = allocate_node_id(
                     self.adapter, self.user_id, type_, name)
-                self.adapter.upsert_nodes([candidate])
+                nodes_to_upsert.append(candidate)
                 settled_id = candidate.id
                 report.decisions.append(Decision(
                     name, type_, "NEW", settled_id, dd.score, "new"))
             name_to_ids.setdefault(name, []).append(settled_id)
+
+        if nodes_to_upsert:
+            self.adapter.upsert_nodes(nodes_to_upsert)
+        if edges_to_upsert:
+            self.adapter.upsert_edges(edges_to_upsert)
 
         edges_out = []
         for ee in extracted_edges:

@@ -42,6 +42,15 @@ class KgPaths:
     def review(self) -> Path:         return self.root / "review"
     @property
     def kg_db(self) -> Path:          return self.root / "kg.db"
+    @property
+    def file_hashes(self) -> Path:    return self.root / "file_hashes.jsonl"
+    @property
+    def coverage(self) -> Path:       return self.root / "coverage.json"
+    @property
+    def writer_lock(self) -> Path:    return self.root / ".writer.lock"
+
+    def rebuild_dir(self, candidate_id: str) -> Path:
+        return self.root / f".rebuild-{candidate_id}"
 
     def ensure(self) -> None:
         for d in (self.raw, self.raw_conversations, self.wiki,

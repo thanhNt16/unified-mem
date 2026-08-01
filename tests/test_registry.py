@@ -31,3 +31,12 @@ def test_unextracted_and_mark(tmp_path):
     assert len(reg.unextracted()) == 1
     assert reg.get("a").extracted is True
     assert reg.get("a").chunks_done == [0, 1]
+
+
+def test_first_completed_chunk_keeps_source_partial(tmp_path):
+    registry = Registry(tmp_path / "registry.jsonl")
+    source = registry.add_raw("body", title="x", source_type="text", chunk_count=3)
+    registry.mark_chunk(source.sha256, 0, "done")
+    record = registry.get(source.sha256)
+    assert record.status == "partial"
+    assert record.chunks_done == [0]

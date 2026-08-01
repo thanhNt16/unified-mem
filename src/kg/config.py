@@ -44,6 +44,18 @@ class QueryConfig(BaseModel):
     deep_search_hops: int = 3
     pack_budget_tokens: int = 4000
     subgraph_cap: int = 300
+    traverse_budget: int = 500
+    diversity_cap: int = 3
+    graph_hops_find: int = 1
+    graph_hops_trace: int = 3
+    graph_hops_explain: int = 2
+    intent_llm: bool = True
+
+
+class IndexConfig(BaseModel):
+    mode: str = "moderate"
+    incremental_threshold: float = 0.10
+    batch_size: int = 1000
 
 
 class DreamConfig(BaseModel):
@@ -63,6 +75,7 @@ class Config(BaseModel):
     thresholds: ThresholdsConfig = ThresholdsConfig()
     chunking: ChunkingConfig = ChunkingConfig()
     query: QueryConfig = QueryConfig()
+    index: IndexConfig = IndexConfig()
     dream: DreamConfig = DreamConfig()
 
     @classmethod
@@ -84,6 +97,7 @@ class Config(BaseModel):
         t = self.thresholds
         c = self.chunking
         q = self.query
+        i = self.index
         d = self.dream
         embed_fields_lines = "\n".join(
             f"{k} = {v!r}" for k, v in e.embed_fields.items()
@@ -123,6 +137,12 @@ default_hops = {q.default_hops}
 deep_search_hops = {q.deep_search_hops}
 pack_budget_tokens = {q.pack_budget_tokens}
 subgraph_cap = {q.subgraph_cap}
+traverse_budget = {q.traverse_budget}
+
+[index]
+mode = "{i.mode}"
+incremental_threshold = {i.incremental_threshold}
+batch_size = {i.batch_size}
 
 [dream]
 recent_window = "{d.recent_window}"

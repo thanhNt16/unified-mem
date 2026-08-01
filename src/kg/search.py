@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from kg.embed import Embedder
-from kg.storage.base import StorageAdapter
+from kg.storage.base import StorageAdapter, Subgraph
+from kg.traverse import expand
 
 _VALID_MODES = ("hybrid", "bm25", "semantic", "keyword")
 
@@ -41,3 +42,70 @@ def hybrid_search(
 
     fused = rrf(rank_lists, k=rrf_k)
     return fused[:k]
+
+
+def weighted_rrf(
+    streams: list[tuple[list[str], float]],
+    k: int = 60,
+) -> list[tuple[str, float]]:
+    """RRF with per-stream weights. Score += weight * 1/(k + rank + 1)."""
+    scores: dict[str, float] = {}
+    for rank_list, weight in streams:
+        for rank, item in enumerate(rank_list):
+            scores[item] = scores.get(item, 0.0) + weight * 1.0 / (k + rank + 1)
+    return sorted(scores.items(), key=lambda kv: -kv[1])
+
+
+def graph_aware_hybrid_search(
+    adapter: StorageAdapter,
+    embedder: Embedder,
+    query: str,
+    policy,  # duck-typed: .hops, .cap, .weights dict
+    *,
+    config=None,
+    return_subgraph: bool = False,
+) -> list[tuple[str, float]] | tuple[list[tuple[str, float]], Subgraph | None]:
+    """3-stream RRF: BM25 + vector + graph expansion from top seeds.
+
+    If ``return_subgraph`` is True, returns a tuple ``(ranked_ids, subgraph)``.
+    The ``subgraph`` is the already-expanded graph used for the graph stream,
+    so callers can reuse it instead of calling ``expand()`` again on the same
+    seeds. If no expansion was performed, ``subgraph`` is ``None``.
+    """
+    cap = policy.cap
+    bm25_hits = adapter.fts_search(query, k=cap * 3, type_filter=None)
+    vec_hits = adapter.vec_search(embedder.embed(query), k=cap * 3, type_filter=None)
+
+    bm25_ids = [nid for nid, _ in bm25_hits]
+    vec_ids = [nid for nid, _ in vec_hits]
+
+    seeds = []
+    seen = set()
+    for nid in bm25_ids[:10] + vec_ids[:10]:
+        if nid not in seen:
+            seeds.append(nid)
+            seen.add(nid)
+
+    graph_ids: list[str] = []
+    sg = None
+    if policy.hops > 0 and seeds:
+        max_nodes = 500
+        if config is not None and getattr(config, "query", None) is not None:
+            max_nodes = getattr(config.query, "traverse_budget", max_nodes)
+        sg = expand(adapter, seeds, hops=policy.hops, cap=cap, max_nodes=max_nodes)
+        graph_ids = [n.id for n in sg.nodes]
+
+    streams = [
+        (bm25_ids, policy.weights["lexical"]),
+        (vec_ids, policy.weights["semantic"]),
+        (graph_ids, policy.weights["graph"]),
+    ]
+
+    rrf_k = 60
+    if config is not None and getattr(config, "query", None) is not None:
+        rrf_k = getattr(config.query, "rrf_k", rrf_k)
+
+    ranked = weighted_rrf(streams, k=rrf_k)[:cap]
+    if return_subgraph:
+        return ranked, sg
+    return ranked

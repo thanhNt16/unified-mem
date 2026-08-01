@@ -42,6 +42,10 @@ def bench_cli(
         Path | None,
         typer.Option("--out-dir", help="Output directory for results.")
     ] = None,
+    dimension: Annotated[
+        str,
+        typer.Option("--dimension", "-d", help="Benchmark dimension: all (default), d3, d4")
+    ] = "all",
 ) -> None:
     """Run the deterministic benchmark suite."""
     if scale not in VALID_SCALES:
@@ -54,6 +58,10 @@ def bench_cli(
     else:
         out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    if dimension not in ("all", "d3", "d4"):
+        typer.echo(f"Error: --dimension must be all|d3|d4, got {dimension}", err=True)
+        raise typer.Exit(1)
 
     try:
         from bench.corpus import make_corpus_at_scale
@@ -81,14 +89,45 @@ def bench_cli(
         typer.echo(f"Error: corpus dir not found: {corpus_dir}", err=True)
         raise typer.Exit(1)
 
-    typer.echo(f"Running kg benchmark (scale={scale}, fake embedder)...")
-    with tempfile.TemporaryDirectory() as tmp:
-        kg_result = run_kg(corpus_dir, tmp, scale=scale, embedder_opt="fake")
+    kg_result = None
+    baseline_results: list = []
+    recall_result: dict | None = None
+    comparative_result: dict | None = None
 
-    typer.echo("Running baseline grep...")
-    baseline_results = [run_baseline(corpus_dir, query=q) for q in QUERIES]
+    if dimension in ("all", "d3"):
+        typer.echo(f"Running kg benchmark (scale={scale}, fake embedder)...")
+        with tempfile.TemporaryDirectory() as tmp:
+            kg_result = run_kg(corpus_dir, tmp, scale=scale, embedder_opt="fake")
+            if dimension in ("d3", "all"):
+                typer.echo("Running recall@k benchmark (D3)...")
+                from bench.recall import run_recall_benchmark
+                from bench.runners import build_indexed_adapter
+                # run_kg closes the adapter; build a fresh one for recall.
+                adapter, embedder, cfg = build_indexed_adapter(corpus_dir, tmp, scale=scale)
+                try:
+                    recall_result = run_recall_benchmark(
+                        adapter, embedder, cfg, corpus_dir, k_values=(5, 10)
+                    )
+                finally:
+                    adapter.conn.close()
 
-    report_path = render_report([kg_result], baseline_results, out_path=out_dir)
+    if dimension in ("all", "d4"):
+        typer.echo("Running baseline grep...")
+        baseline_results = [run_baseline(corpus_dir, query=q) for q in QUERIES]
+        if dimension == "d4" or dimension == "all":
+            typer.echo("Running comparative benchmark (D4)...")
+            from bench.runners import run_comparative
+            with tempfile.TemporaryDirectory() as tmp2:
+                comparative_result = run_comparative(corpus_dir, tmp2, scale=scale)
+
+    kg_results_list = [kg_result] if kg_result is not None else []
+    report_path = render_report(
+        kg_results_list,
+        baseline_results,
+        out_path=out_dir,
+        recall_result=recall_result,
+        comparative_result=comparative_result,
+    )
     typer.echo(f"Report written to {report_path}")
 
     # Print summary to stdout

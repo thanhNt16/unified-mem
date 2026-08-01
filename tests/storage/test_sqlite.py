@@ -154,6 +154,80 @@ def test_vec_search_type_filter_overfetches_wrong_type_hits(tmp_path):
     assert hits == [("u:person:match", hits[0][1])]
 
 
+# --- FTS5 query escaping / regression tests ---
+def test_fts_empty_query_raises(tmp_path):
+    a = _adapter(tmp_path)
+    a.upsert_nodes([Node(id="u:person:x", type="person", name="X")])
+    import pytest
+    with pytest.raises(ValueError, match="at least one searchable term"):
+        a.fts_search("", k=5)
+
+
+def test_fts_whitespace_only_query_raises(tmp_path):
+    a = _adapter(tmp_path)
+    a.upsert_nodes([Node(id="u:person:x", type="person", name="X")])
+    import pytest
+    with pytest.raises(ValueError, match="at least one searchable term"):
+        a.fts_search("   \n\t  ", k=5)
+
+
+def test_fts_column_filter_syntax_no_crash(tmp_path):
+    """Regression for F3: colon-separated text like 'FIXTURE:value' crashed FTS5
+    with 'no such column: FIXTURE'. Escaping wraps query in quotes."""
+    a = _adapter(tmp_path)
+    a.upsert_nodes([
+        Node(id="u:person:d", type="person", name="Demis Hassabis",
+             summary="DeepMind founder"),
+    ])
+    # Should not raise sqlite3.OperationalError
+    hits = a.fts_search("FIXTURE:some test value", k=5)
+    assert len(hits) >= 0  # May or may not match, but no crash
+
+
+def test_fts_multiple_colons_no_crash(tmp_path):
+    a = _adapter(tmp_path)
+    a.upsert_nodes([
+        Node(id="u:person:x", type="person", name="X", summary="test:one:two"),
+    ])
+    hits = a.fts_search("test:one:two", k=5)
+    assert len(hits) >= 0
+
+
+def test_fts_already_quoted_text(tmp_path):
+    """User queries like '"already quoted"' should still work."""
+    a = _adapter(tmp_path)
+    a.upsert_nodes([
+        Node(id="u:person:x", type="person", name="X", summary="test phrase"),
+    ])
+    hits = a.fts_search('"test phrase"', k=5)
+    ids = [h[0] for h in hits]
+    assert "u:person:x" in ids
+
+
+def test_fts_punctuation_heavy(tmp_path):
+    a = _adapter(tmp_path)
+    a.upsert_nodes([
+        Node(id="u:person:x", type="person", name="X",
+             summary="C & Python Go Rust"),
+    ])
+    hits = a.fts_search("C++ & Python, Go! Rust?", k=5)
+    ids = [h[0] for h in hits]
+    assert "u:person:x" in ids
+
+
+def test_fts_normal_query_still_works(tmp_path):
+    """Ensure quoting didn't break normal queries."""
+    a = _adapter(tmp_path)
+    a.upsert_nodes([
+        Node(id="u:person:d", type="person", name="Demis Hassabis",
+             summary="DeepMind founder"),
+    ])
+    hits = a.fts_search("DeepMind founder", k=5)
+    ids = [h[0] for h in hits]
+    assert "u:person:d" in ids
+
+
+
 def test_vec_upsert_reembed_updates_vector(tmp_path):
     """Upserting same active node with different embedding updates the vec row."""
     a = _adapter(tmp_path)

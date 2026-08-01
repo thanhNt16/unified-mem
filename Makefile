@@ -1,7 +1,7 @@
 PKG := kg
 H ?= claude
 
-.PHONY: dev build test install uninstall clean bench
+.PHONY: dev build test install uninstall clean bench evaluate-cbm
 
 dev:           ## editable install for working on kg itself
 	uv sync
@@ -26,3 +26,10 @@ clean:
 
 bench:          ## run deterministic benchmark (CI-safe 10-doc tier); requires repo checkout (bench harness lives in ./bench)
 	PYTHONPATH=$(CURDIR) uv run kg bench --scale 10
+
+evaluate-cbm:   ## check CBM regression metric floors
+	PYTHONPATH=$(CURDIR) uv run pytest tests/ -x
+	PYTHONPATH=$(CURDIR) uv run kg bench --scale 10 --dimension all
+	PYTHONPATH=$(CURDIR) uv run pytest tests/test_scale_10k.py -v -s
+	PYTHONPATH=$(CURDIR) uv run python bench/scale_100k.py
+	PYTHONPATH=$(CURDIR) uv run pytest tests/test_evaluate_cbm.py -v
