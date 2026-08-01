@@ -22,3 +22,5 @@ bench/results/
 CLAUDE.md
 .kg-install-manifest.json
 .kg-install-backups/
+
+.worktrees/
