@@ -1,0 +1,69 @@
+:root {
+  --bg: #06090f;
+  --panel: #0d1b2e;
+  --ink: #edf4ff;
+  --muted: #95a9c3;
+  --line: #1c3553;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px system-ui, -apple-system, sans-serif;
+}
+header { padding: 16px 16px 6px; }
+h1 { font-size: 17px; margin: 0; }
+p { margin: 4px 0; color: var(--muted); font-size: 12px; }
+.controls {
+  display: flex;
+  gap: 7px;
+  padding: 8px 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+button, select, input {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--ink);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+}
+input { flex: 1; min-width: 120px; }
+.scene {
+  position: relative;
+  width: 100%;
+  height: 60vh;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  margin: 0 10px;
+  width: calc(100% - 20px);
+}
+.scene canvas { display: block; width: 100% !important; height: 100% !important; }
+.tooltip {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  background: rgba(13, 27, 46, 0.92);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  pointer-events: none;
+  max-width: 70%;
+}
+.note { padding: 10px 16px 4px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.loading { padding: 40px; text-align: center; color: var(--muted); }
+.attribution {
+  padding: 4px 16px 16px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.attribution a { color: var(--muted); }
+@media (min-width: 700px) {
+  main, header, .controls, .note, .attribution { max-width: 900px; margin-left: auto; margin-right: auto; }
+  .scene { max-width: 900px; margin-left: auto; margin-right: auto; height: 64vh; }
+}

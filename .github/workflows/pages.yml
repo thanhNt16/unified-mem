@@ -2,7 +2,7 @@ name: Deploy graph demo
 on:
   push:
     branches: [main]
-    paths: [docs/demo/**, .github/workflows/pages.yml]
+    paths: [docs/demo/**, .github/workflows/pages.yml, bench/export_demo_graph.py]
   workflow_dispatch:
 permissions:
   contents: read
@@ -19,9 +19,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: docs/demo/package-lock.json
+      - run: npm ci
+        working-directory: docs/demo
+      - run: npm run build
+        working-directory: docs/demo
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/demo
+          path: docs/demo/dist
       - id: deployment
         uses: actions/deploy-pages@v4
