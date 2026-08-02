@@ -3,6 +3,10 @@
 Per-milestone changes to kg. Realized commands only; deferred features are
 flagged in [the architecture overview](docs/architecture/overview.md).
 
+## [Unreleased]
+
+- **Updated** the shared pinned CBM 3D graph UI for live `kg viz` and static GitHub Pages, using deterministic Python layout and matching live/static geometry. Retired the duplicate `docs/demo/` frontend; the wheel now bundles the same frontend assets for runtime use.
+
 ## [M6b] — 2026-08-01 — Graph-Aware Query, Scale Fixes, 3D Demo, CBM Patterns
 
 - **Added** `kg query "<q>" [--intent find|trace|explain]` — graph-aware hybrid

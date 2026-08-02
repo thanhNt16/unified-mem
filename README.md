@@ -28,7 +28,7 @@ and judgment; the `kg` engine does deterministic storage, matching, and search.
 - Spec: `docs/superpowers/specs/2026-07-26-kg-unified-memory-design.md` (full design).
 - [Current status](docs/reports/2026-08-01-status.md) — shipped features, measured performance, remaining work.
 - [Benchmarks](bench/BENCHMARKS.md) — reproducible benchmark commands, dimensions, current results.
-- [3D graph demo](https://thanhnt16.github.io/unified-mem/) — real repo graph + 10k-node stress dataset.
+- **3D graph visualization** — `kg viz` launches the pinned CBM 3D shell at `http://127.0.0.1:9749` by default. The wheel bundles all frontend assets, so no Node/npm is needed at runtime. GitHub Pages serves the same build with a bundled read-only snapshot. Adapted from [codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp) at commit [`d6be58ef9d43c574a2d1b0827ecc1e3c4846f0fe`](https://github.com/DeusData/codebase-memory-mcp/tree/d6be58ef9d43c574a2d1b0827ecc1e3c4846f0fe) under MIT.
 - [CHANGELOG.md](CHANGELOG.md) — milestone-by-milestone changes.
 
 ## Quick start (from this checkout)
