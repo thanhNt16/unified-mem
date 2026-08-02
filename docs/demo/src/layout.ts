@@ -2,8 +2,7 @@
 // only cluster ids + a single part_of hierarchy, so we place clusters on
 // spheres and fan members out. Good enough for a static visualization demo.
 import type { GraphData, GraphNode, GraphEdge } from "./types";
-
-const HUES = ["#62d4a8", "#79b8ff", "#f7b267", "#d595ff", "#ff7d9c", "#55d6d6", "#d8c463", "#ff9d5c"];
+import { normalizeType, stellarForDegree } from "./graphState";
 
 interface RawNode {
   id: string;
@@ -57,7 +56,6 @@ export function transform(raw: RawGraph): GraphData {
     clusterIndex.set(n.cluster, localIndex + 1);
     const local = fibPoint(localIndex, byCluster.get(n.cluster)!.length, 40);
     const deg = degByNode.get(n.id) ?? 0;
-    const hue = HUES[Math.abs(n.cluster) % HUES.length];
     nodes.push({
       id: i,
       sourceId: n.id,
@@ -69,9 +67,9 @@ export function transform(raw: RawGraph): GraphData {
       qualified_name: n.path,
       summary: n.summary,
       size: 1.5 + Math.min(6, Math.sqrt(deg) * 1.1),
-      color: deg > 8 ? "#79b8ff" : hue, // high-degree → blue hub glow
+      color: stellarForDegree(deg).color,
       cluster: n.cluster,
-      subtype: n.subtype ?? n.type,
+      subtype: normalizeType(n.subtype ?? n.type),
       deg,
     });
   });
@@ -82,7 +80,7 @@ export function transform(raw: RawGraph): GraphData {
     const source = idIndex.get(e.source);
     const target = idIndex.get(e.target);
     if (source === undefined || target === undefined) continue;
-    edges.push({ source, target, type: e.type });
+    edges.push({ source, target, type: normalizeType(e.type) });
     const sourceNeighbors = adjacency.get(source) ?? new Set<number>();
     sourceNeighbors.add(target);
     adjacency.set(source, sourceNeighbors);

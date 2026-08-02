@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "check:data": "node scripts/check-data.mjs",
-    "build": "npm run check:data && tsc -b && vite build && cp graph.json graph-stress.json dist/",
+    "test": "esbuild scripts/graph-state.test.ts --bundle --platform=node --format=esm --outfile=/tmp/unified-mem-graph-state.test.mjs && node --test /tmp/unified-mem-graph-state.test.mjs",
+    "build": "npm run check:data && npm run test && tsc -b && vite build && cp graph.json graph-stress.json dist/",
     "preview": "vite preview"
   },
   "dependencies": {

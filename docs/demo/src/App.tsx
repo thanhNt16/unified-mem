@@ -1,6 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
-import { GraphScene } from "./scene/GraphScene";
+import { ErrorBoundary } from "./ErrorBoundary";
+import { DisplaySettingsMenu, FilterPanel, NodeDetailPanel, StatsPanel } from "./GraphPanels";
+import {
+  DEFAULT_DISPLAY_SETTINGS,
+  type DisplaySettings,
+  type GraphFilters,
+  cameraTarget,
+  countTypes,
+  edgeIsVisible,
+  loadDisplaySettings,
+  normalizeType,
+  oneHopIds,
+  visibleNodeIds,
+} from "./graphState";
 import { transform } from "./layout";
+import { GraphScene } from "./scene/GraphScene";
 import type { GraphData, GraphNode } from "./types";
 
 interface RawGraph {
@@ -13,191 +27,208 @@ interface RawGraph {
 }
 
 type Dataset = "real" | "stress";
-const DATASETS: Record<Dataset, { file: string; label: string }> = {
-  real: { file: "graph.json", label: "Real repo (1.7k)" },
-  stress: { file: "graph-stress.json", label: "Stress 10k / 34k edges" },
-};
+type Tab = "graph" | "stats";
 
-function neighborhoodSet(data: GraphData, focus: GraphNode | null): Set<number> | null {
-  if (!focus) return null;
-  const ids = new Set<number>([focus.id]);
-  const nbrs = data.adjacency.get(focus.id);
-  if (nbrs) for (const n of nbrs) ids.add(n);
-  return ids;
-}
+const DATASETS: Record<Dataset, { file: string; label: string }> = {
+  real: { file: "graph.json", label: "Real repository · 1.7k" },
+  stress: { file: "graph-stress.json", label: "Stress · 10k / 34k" },
+};
 
 export default function App() {
   const [dataset, setDataset] = useState<Dataset>("real");
-  const [retryGen, setRetryGen] = useState(0);
+  const [tab, setTab] = useState<Tab>("graph");
+  const [retryGeneration, setRetryGeneration] = useState(0);
+  const [cameraGeneration, setCameraGeneration] = useState(0);
   const [raw, setRaw] = useState<RawGraph | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [cluster, setCluster] = useState("all");
+  const [error, setError] = useState<string | null>(null);
   const [hovered, setHovered] = useState<GraphNode | null>(null);
   const [selected, setSelected] = useState<GraphNode | null>(null);
+  const [filters, setFilterState] = useState<GraphFilters>({
+    query: "",
+    cluster: "all",
+    nodeTypes: new Set(),
+    edgeTypes: new Set(),
+  });
+  const [showLabels, setShowLabels] = useState(true);
+  const [display, setDisplay] = useState<DisplaySettings>(() => {
+    try { return loadDisplaySettings(window.localStorage); } catch { return DEFAULT_DISPLAY_SETTINGS; }
+  });
 
   useEffect(() => {
     const controller = new AbortController();
     setRaw(null);
-    setErr(null);
+    setError(null);
     setSelected(null);
     setHovered(null);
     fetch(DATASETS[dataset].file, { signal: controller.signal })
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
       })
       .then(setRaw)
-      .catch((e) => {
-        if (e.name === "AbortError") return; // superseded by a newer request
-        setErr(String(e));
+      .catch((cause) => {
+        if (cause.name === "AbortError") return;
+        setError(String(cause));
       });
     return () => controller.abort();
-  }, [dataset, retryGen]);
+  }, [dataset, retryGeneration]);
 
   const data: GraphData | null = useMemo(() => (raw ? transform(raw) : null), [raw]);
-
-  const filterIds = useMemo(() => {
-    if (!data) return null;
-    const q = query.toLowerCase().trim();
-    if (!q && cluster === "all") return null;
-    const ids = new Set<number>();
-    data.nodes.forEach((n) => {
-      const inCluster = cluster === "all" || String(n.cluster) === cluster;
-      const inQuery = !q || n.name.toLowerCase().includes(q) || (n.qualified_name ?? "").toLowerCase().includes(q);
-      if (inCluster && inQuery) ids.add(n.id);
-    });
-    return ids;
-  }, [data, query, cluster]);
-
-  const focus = hovered ?? selected;
-  const interactionIds = useMemo(() => (data ? neighborhoodSet(data, focus) : null), [data, focus]);
-  const highlightedIds = interactionIds ?? filterIds;
-
-  // All clusters, sorted by size; native <select> handles ~200 options.
-  const clusters = useMemo(
-    () => [...(raw?.clusters ?? [])].sort((a, b) => b.count - a.count),
-    [raw],
+  const nodeTypeCounts = useMemo(
+    () => countTypes(data?.nodes.map((node) => node.subtype ?? "unknown") ?? []),
+    [data],
+  );
+  const edgeTypeCounts = useMemo(
+    () => countTypes(data?.edges.map((edge) => edge.type) ?? []),
+    [data],
   );
 
-  const clearFocus = () => {
-    setHovered(null);
-    setSelected(null);
+  useEffect(() => {
+    setFilterState({
+      query: "",
+      cluster: "all",
+      nodeTypes: new Set(nodeTypeCounts.keys()),
+      edgeTypes: new Set(edgeTypeCounts.keys()),
+    });
+    setShowLabels(dataset === "real");
+  }, [dataset, nodeTypeCounts, edgeTypeCounts]);
+
+  const visibleIds = useMemo(
+    () => data ? visibleNodeIds(data, filters) : new Set<number>(),
+    [data, filters],
+  );
+  const focus = hovered ?? selected;
+  const focusedIds = useMemo(() => (data ? oneHopIds(data, focus?.id ?? null) : null), [data, focus]);
+  const overviewTarget = useMemo(() => (data ? cameraTarget(data.nodes) : null), [data]);
+  const target = useMemo(() => {
+    if (!data || !selected) return overviewTarget;
+    const ids = oneHopIds(data, selected.id) ?? new Set([selected.id]);
+    return cameraTarget(data.nodes.filter((node) => ids.has(node.id)));
+  }, [data, selected, overviewTarget]);
+  const visibleEdgeCount = useMemo(
+    () => data?.edges.reduce((count, edge) => count + (edgeIsVisible(edge, visibleIds, filters.edgeTypes) ? 1 : 0), 0) ?? 0,
+    [data, visibleIds, filters.edgeTypes],
+  );
+
+  const clusters = useMemo(() => [...(raw?.clusters ?? [])].sort((a, b) => b.count - a.count), [raw]);
+  const filtered = data ? visibleIds.size !== data.nodes.length || visibleEdgeCount !== data.edges.length : false;
+
+  const updateFilters = (next: Partial<GraphFilters>) => setFilterState((current) => ({ ...current, ...next }));
+  const clearSelection = () => { setHovered(null); setSelected(null); };
+  const selectNode = (node: GraphNode) => { setHovered(null); setSelected(node); setCameraGeneration((n) => n + 1); };
+  const reset = () => {
+    clearSelection();
+    setFilterState({
+      query: "",
+      cluster: "all",
+      nodeTypes: new Set(nodeTypeCounts.keys()),
+      edgeTypes: new Set(edgeTypeCounts.keys()),
+    });
+    setShowLabels(dataset === "real");
+    setCameraGeneration((n) => n + 1);
+  };
+  const updateDisplay = (next: DisplaySettings) => {
+    setDisplay(next);
+    try { window.localStorage.setItem("unified-mem-graph-display", JSON.stringify(next)); } catch { /* storage is optional */ }
   };
 
-  const focusNeighbors = focus ? (data?.adjacency.get(focus.id)?.size ?? 0) : 0;
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") clearSelection();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
-  if (err) {
+  if (error) {
     return (
       <div className="loading">
-        Failed to load {DATASETS[dataset].label}: {err}
+        Failed to load {DATASETS[dataset].label}: {error}
         <br />
-        <button onClick={() => setRetryGen((g) => g + 1)}>Retry</button>
+        <button onClick={() => setRetryGeneration((generation) => generation + 1)}>Retry</button>
       </div>
     );
   }
-  if (!data) return <div className="loading">Loading {DATASETS[dataset].label}…</div>;
+  if (!data || !raw) return <div className="loading">Loading {DATASETS[dataset].label}…</div>;
 
   return (
-    <>
-      <header>
-        <h1>kg · unified-mem knowledge graph</h1>
-        <p>
-          {raw?.source} · {data.nodes.length.toLocaleString()} nodes · {data.edges.length.toLocaleString()} edges ·{" "}
-          {raw?.clusters.length ?? 0} communities
-          {raw?.truncated_nodes && " (truncated)"}
-        </p>
-      </header>
+    <ErrorBoundary>
+      <div className="app-shell">
+        <header className="app-header">
+          <div className="brand">
+            <strong>kg</strong>
+            <span>unified memory graph</span>
+          </div>
+          <nav className="tabs" aria-label="View">
+            <button className={tab === "graph" ? "tab active" : "tab"} onClick={() => setTab("graph")}>Graph</button>
+            <button className={tab === "stats" ? "tab active" : "tab"} onClick={() => setTab("stats")}>Stats</button>
+          </nav>
+          <div className="header-actions">
+            <select value={dataset} onChange={(event) => setDataset(event.target.value as Dataset)} aria-label="Dataset">
+              {Object.entries(DATASETS).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
+            </select>
+            {tab === "graph" && <DisplaySettingsMenu settings={display} onChange={updateDisplay} />}
+          </div>
+        </header>
 
-      <section className="controls">
-        <select value={dataset} onChange={(e) => setDataset(e.target.value as Dataset)}>
-          {Object.entries(DATASETS).map(([k, v]) => (
-            <option key={k} value={k}>
-              {v.label}
-            </option>
-          ))}
-        </select>
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search nodes…" autoComplete="off" />
-        <select value={cluster} onChange={(e) => setCluster(e.target.value)}>
-          <option value="all">All clusters</option>
-          {clusters.map((c) => (
-            <option key={c.id} value={c.id}>
-              Cluster {c.id} · {c.count}
-            </option>
-          ))}
-        </select>
-        <button
-          onClick={() => {
-            setQuery("");
-            setCluster("all");
-            clearFocus();
-          }}
-        >
-          Reset
-        </button>
-      </section>
-
-      <GraphScene
-        data={data}
-        highlightedIds={highlightedIds}
-        onHover={setHovered}
-        onNodeClick={setSelected}
-        onBackgroundClick={clearFocus}
-      />
-
-      <div className="note">
-        {focus ? (
-          <>
-            <b>{focus.name}</b> <small>({focus.subtype})</small>
-            <br />
-            cluster {focus.cluster} · degree {focus.deg} · {focusNeighbors} neighbor{focusNeighbors === 1 ? "" : "s"}
-            {focus.qualified_name ? ` · ${focus.qualified_name}` : ""}
-            {focus.summary ? <br /> : null}
-            {focus.summary}
-          </>
+        {tab === "stats" ? (
+          <main className="stats-main">
+            <StatsPanel
+              data={data}
+              source={raw.source}
+              truncated={raw.truncated_nodes || raw.truncated_edges}
+              nodeTypeCounts={nodeTypeCounts}
+              edgeTypeCounts={edgeTypeCounts}
+            />
+          </main>
         ) : (
-          "Drag to orbit · scroll/pinch to zoom · hover a node to highlight its neighbors · click for detail."
+          <main className={`graph-layout ${selected ? "has-detail" : ""}`}>
+            <aside className="sidebar">
+              <FilterPanel
+                filters={filters}
+                setFilters={updateFilters}
+                nodeTypeCounts={nodeTypeCounts}
+                edgeTypeCounts={edgeTypeCounts}
+                clusters={clusters}
+                showLabels={showLabels}
+                setShowLabels={setShowLabels}
+                onReset={reset}
+              />
+            </aside>
+            <section className="graph-main">
+              <div className="hud">
+                <span>{visibleIds.size.toLocaleString()} nodes</span>
+                <span>{visibleEdgeCount.toLocaleString()} edges</span>
+                {filtered && <span className="hud-muted">of {data.nodes.length.toLocaleString()} / {data.edges.length.toLocaleString()}</span>}
+                {focusedIds && <span>{focusedIds.size} focused</span>}
+                {(raw.truncated_nodes || raw.truncated_edges) && <span className="warn">truncated</span>}
+              </div>
+              <GraphScene
+                data={data}
+                visibleIds={visibleIds}
+                focusedIds={focusedIds}
+                selectedId={selected?.id ?? null}
+                hovered={hovered}
+                cameraTarget={target}
+                cameraGeneration={cameraGeneration}
+                display={display}
+                edgeTypes={filters.edgeTypes}
+                showLabels={showLabels}
+                onHover={(node) => { if (!node || visibleIds.has(node.id)) setHovered(node); }}
+                onNodeClick={selectNode}
+                onBackgroundClick={clearSelection}
+              />
+              <div className="graph-help">
+                {focus ? <><b>{focus.name}</b> · {normalizeType(focus.subtype)} · cluster {focus.cluster} · degree {focus.deg}</> : "Drag to orbit · scroll to zoom · hover for neighbors · click to focus"}
+              </div>
+              <footer className="attribution">
+                Renderer adapted from <a href="https://github.com/DeusData/codebase-memory-mcp" target="_blank" rel="noreferrer">codebase-memory-mcp</a> (MIT, DeusData).
+              </footer>
+            </section>
+            {selected && <NodeDetailPanel node={selected} data={data} onClose={clearSelection} onSelect={selectNode} />}
+          </main>
         )}
       </div>
-
-      {selected && (
-        <div className="detail-panel">
-          <div className="detail-head">
-            <strong>{selected.name}</strong>
-            <button onClick={clearFocus} aria-label="Close">×</button>
-          </div>
-          <dl>
-            <dt>Type</dt>
-            <dd>{selected.subtype}</dd>
-            <dt>Cluster</dt>
-            <dd>{selected.cluster}</dd>
-            <dt>Degree</dt>
-            <dd>{selected.deg}</dd>
-            <dt>Neighbors</dt>
-            <dd>{focusNeighbors}</dd>
-            {selected.qualified_name && (
-              <>
-                <dt>Path</dt>
-                <dd className="mono">{selected.qualified_name}</dd>
-              </>
-            )}
-            {selected.summary && (
-              <>
-                <dt>Summary</dt>
-                <dd>{selected.summary}</dd>
-              </>
-            )}
-          </dl>
-        </div>
-      )}
-
-      <footer className="attribution">
-        3D renderer adapted from{" "}
-        <a href="https://github.com/DeusData/codebase-memory-mcp" target="_blank" rel="noreferrer">
-          codebase-memory-mcp
-        </a>{" "}
-        (MIT, DeusData).
-      </footer>
-    </>
+    </ErrorBoundary>
   );
 }
