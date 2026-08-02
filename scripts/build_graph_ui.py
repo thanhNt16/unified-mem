@@ -23,8 +23,9 @@ DEFAULT_SOURCE = VIZ_UI / "snapshots" / "demo-source.json"
 DEFAULT_DIST = VIZ_UI / "dist"
 DEFAULT_OUTPUT = ROOT / "src" / "kg" / "viz" / "assets"
 
-_MAX_NODES = 2_000
-_MAX_EDGES = 4_000
+# Static build ceiling includes the 10k/15k Pages stress demo.
+_MAX_NODES = 12_000
+_MAX_EDGES = 18_000
 
 _IMPORT_RE = re.compile(
     r"""(?:src|href)=(["']?)([^"' >\t]+)\1|url\(\s*(["']?)([^)"'\s]+)\3""",

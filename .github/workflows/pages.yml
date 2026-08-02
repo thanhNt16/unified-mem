@@ -44,7 +44,7 @@ jobs:
           cache-dependency-path: ui/graph-ui/package-lock.json
 
       - name: Build and package graph UI
-        run: uv run python scripts/build_graph_ui.py --output .pages-dist
+        run: uv run python scripts/build_graph_ui.py --source ui/graph-ui/snapshots/stress-source.json --output .pages-dist
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
