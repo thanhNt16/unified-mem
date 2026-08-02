@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { GraphTab } from "./components/GraphTab";
 import { StatsTab } from "./components/StatsTab";
-import { ControlTab } from "./components/ControlTab";
 import type { TabId } from "./lib/types";
 import { useUiMessages } from "./lib/i18n";
 import { loadRuntime, DEFAULT_CAPABILITIES } from "./lib/kgAdapter";
 import type { RuntimeConfig } from "./lib/kgAdapter";
 
-const TAB_IDS: TabId[] = ["graph", "stats", "control"];
+const TAB_IDS: TabId[] = ["graph", "stats"];
 
 interface RouteState {
   tab: TabId;
@@ -94,7 +93,6 @@ export function App() {
   /* Gate the tabs on the resolved runtime capabilities. */
   const tabs: { id: TabId; label: string }[] = [{ id: "graph", label: t.tabs.graph }];
   if (runtime.capabilities.projects) tabs.push({ id: "stats", label: t.tabs.projects });
-  if (runtime.capabilities.control) tabs.push({ id: "control", label: t.tabs.control });
 
   /* A route pointing at a hidden tab falls back to the always-available graph. */
   const supported = new Set(tabs.map((tab) => tab.id));
@@ -149,6 +147,7 @@ export function App() {
               {selectedProject}
             </span>
             <button
+              aria-label="Clear selected project"
               onClick={() => navigate("stats", null)}
               className="text-foreground/20 hover:text-foreground/50 text-[12px] ml-1 transition-colors"
             >
@@ -162,8 +161,6 @@ export function App() {
       <main className="flex-1 min-h-0">
         {effectiveTab === "graph" ? (
           <GraphTab project={selectedProject} runtime={runtime} />
-        ) : effectiveTab === "control" ? (
-          <ControlTab />
         ) : (
           <StatsTab
             onSelectProject={(p) => navigate("graph", p)}

@@ -21,7 +21,7 @@ describe("fetchLayout", () => {
 
     await fetchLayout("large-project");
 
-    expect(GRAPH_RENDER_NODE_LIMIT).toBe(5000);
+    expect(GRAPH_RENDER_NODE_LIMIT).toBe(2000);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const calls = fetchMock.mock.calls as unknown as Array<[string]>;
     const [url] = calls[0];
@@ -85,15 +85,15 @@ describe("fetchLayout", () => {
 });
 
 describe("clampNodeBudget", () => {
-  it("snaps to 5k steps within the 5k..10M range", () => {
-    expect(GRAPH_NODE_BUDGET_STEP).toBe(5000);
-    expect(GRAPH_NODE_BUDGET_MAX).toBe(10_000_000);
-    expect(clampNodeBudget(5000)).toBe(5000);
-    expect(clampNodeBudget(12345)).toBe(10000);
-    expect(clampNodeBudget(12501)).toBe(15000);
-    expect(clampNodeBudget(0)).toBe(5000);
-    expect(clampNodeBudget(-500)).toBe(5000);
-    expect(clampNodeBudget(99_999_999)).toBe(10_000_000);
+  it("snaps to 500 steps within the 500..2000 range", () => {
+    expect(GRAPH_NODE_BUDGET_STEP).toBe(500);
+    expect(GRAPH_NODE_BUDGET_MAX).toBe(2000);
+    expect(clampNodeBudget(500)).toBe(500);
+    expect(clampNodeBudget(1234)).toBe(1000);
+    expect(clampNodeBudget(1251)).toBe(1500);
+    expect(clampNodeBudget(0)).toBe(500);
+    expect(clampNodeBudget(-500)).toBe(500);
+    expect(clampNodeBudget(99_999_999)).toBe(2000);
     expect(clampNodeBudget(Number.NaN)).toBe(GRAPH_RENDER_NODE_LIMIT);
   });
 });

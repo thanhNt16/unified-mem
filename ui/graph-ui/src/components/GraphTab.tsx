@@ -123,7 +123,7 @@ export function GraphTab({ project, runtime = LIVE_RUNTIME }: GraphTabProps) {
    * not fully cover, shown as a white satellite cluster beside the code
    * galaxy. Toggle only hides/shows it — the data rides along with every
    * code-graph layout. Rendered only when the runtime reports missed_graph. */
-  const [showMissedSkeleton, setShowMissedSkeleton] = useState(caps.missed_graph);
+  const [showMissedSkeleton, setShowMissedSkeleton] = useState(false);
 
   /* Dead-code view: recolor by status + status-based filters */
   const [deadCodeView, setDeadCodeView] = useState(caps.dead_code);
@@ -228,14 +228,14 @@ export function GraphTab({ project, runtime = LIVE_RUNTIME }: GraphTabProps) {
       color: "#e9eef5",
     }));
     return { nodes, edges: mg.edges, ids: new Set(nodes.map((n) => n.id)) };
-  }, [data]);
+  }, [data, caps.missed_graph]);
 
   /* Overview framing: both clusters (galaxy + skeleton) in one shot. */
   const overviewTarget = useMemo(() => {
     if (!data) return null;
     const all = missedSkeleton ? [...data.nodes, ...missedSkeleton.nodes] : data.nodes;
     return computeCameraTarget(all, new Set(all.map((n) => n.id)));
-  }, [data, missedSkeleton, caps.missed_graph]);
+  }, [data, missedSkeleton]);
 
   /* With a skeleton beside the galaxy, auto-frame BOTH clusters on load so
    * the side-by-side composition is visible without manual zooming. */

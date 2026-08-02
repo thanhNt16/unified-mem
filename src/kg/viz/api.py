@@ -49,7 +49,7 @@ def build_capabilities(*, static: bool) -> dict[str, bool]:
     return {
         "graph": True,
         "projects": not static,
-        "control": not static,
+        "control": False,
         "index": not static,
         "code_view": False,
         "adr": False,
@@ -136,32 +136,30 @@ def _build_layout_payload_impl(
     n_rows = n_rows[:max_nodes]
     retained_ids = {r["id"] for r in n_rows}
 
-    # Candidate edges among ALL active nodes, pre node-truncation, so edge
-    # truncation reflects the true edge count before dangling-edge dropping.
-    e_rows = adapter.conn.execute(
+    # Only retained-node edges count toward the edge budget. This prevents
+    # dangling edges from consuming the cap and keeps degree aligned with the
+    # rendered graph.
+    all_edges = adapter.conn.execute(
         "SELECT e.id, e.source, e.target, e.semantic_type FROM edges e "
         "JOIN nodes sn ON sn.id = e.source AND sn.status='active' "
         "JOIN nodes tn ON tn.id = e.target AND tn.status='active' "
-        "WHERE e.status='active' ORDER BY e.id LIMIT ?",
-        (max_edges + 1,),
+        "WHERE e.status='active' ORDER BY e.id"
     ).fetchall()
-    truncated_edges = len(e_rows) > max_edges
-    e_rows = e_rows[:max_edges]
+    valid_edges = [r for r in all_edges if r["source"] in retained_ids and r["target"] in retained_ids]
+    truncated_edges = len(valid_edges) > max_edges
+    e_rows = valid_edges[:max_edges]
 
-    # Degree from retained active edges: both endpoints within the retained set.
+    # Degree uses exactly the emitted edge set.
     deg: dict[str, int] = {}
-    if retained_ids:
-        ids = list(retained_ids)
-        placeholders = ",".join("?" * len(ids))
-        for column in ("source", "target"):
-            rows = adapter.conn.execute(
-                f"SELECT e.{column} AS endpoint, COUNT(*) AS c FROM edges e "
-                f"WHERE e.status='active' AND e.source IN ({placeholders}) "
-                f"AND e.target IN ({placeholders}) GROUP BY e.{column}",
-                [*ids, *ids],
-            ).fetchall()
-            for row in rows:
-                deg[row["endpoint"]] = deg.get(row["endpoint"], 0) + row["c"]
+    for row in e_rows:
+        deg[row["source"]] = deg.get(row["source"], 0) + 1
+        deg[row["target"]] = deg.get(row["target"], 0) + 1
+
+
+    layout_edges = [
+        LayoutEdgeInput(r["source"], r["target"], r["semantic_type"])
+        for r in e_rows
+    ]
 
     meta: dict[str, dict] = {}
     layout_nodes: list[LayoutNodeInput] = []
@@ -188,10 +186,6 @@ def _build_layout_payload_impl(
             )
         )
 
-    layout_edges = [
-        LayoutEdgeInput(r["source"], r["target"], r["semantic_type"])
-        for r in e_rows
-    ]
     return _serialize_layout_payload(
         layout_nodes, layout_edges, meta,
         total_nodes=total_nodes,

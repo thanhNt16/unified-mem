@@ -135,7 +135,7 @@ export function NodeDetailPanel({
               {node.label}
             </span>
           </div>
-          <button onClick={onClose} className="text-foreground/20 hover:text-foreground/50 transition-colors text-[16px] leading-none p-1">×</button>
+          <button aria-label="Close" onClick={onClose} className="text-foreground/20 hover:text-foreground/50 transition-colors text-[16px] leading-none p-1">×</button>
         </div>
 
         {node.file_path && (

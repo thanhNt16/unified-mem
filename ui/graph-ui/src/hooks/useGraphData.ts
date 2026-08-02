@@ -31,9 +31,9 @@ const LIVE_RUNTIME: RuntimeConfig = {
  * keeps first paint fast; the user can raise it in 5k steps up to the hard
  * ceiling (mirrors HARD_MAX_NODES in src/ui/layout3d.c). Edges always follow
  * the budget — the server returns every edge between the loaded nodes. */
-export const GRAPH_RENDER_NODE_LIMIT = 5000;
-export const GRAPH_NODE_BUDGET_STEP = 5000;
-export const GRAPH_NODE_BUDGET_MAX = 10_000_000;
+export const GRAPH_RENDER_NODE_LIMIT = 2000;
+export const GRAPH_NODE_BUDGET_STEP = 500;
+export const GRAPH_NODE_BUDGET_MAX = 2000;
 
 export function clampNodeBudget(value: number): number {
   if (!Number.isFinite(value)) return GRAPH_RENDER_NODE_LIMIT;
