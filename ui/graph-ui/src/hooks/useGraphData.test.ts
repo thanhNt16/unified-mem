@@ -25,8 +25,10 @@ describe("fetchLayout", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const calls = fetchMock.mock.calls as unknown as Array<[string]>;
     const [url] = calls[0];
+    /* The capability adapter clamps the budget to the layout endpoint's
+     * 1..2000 range (Task 6 spec) before building the URL. */
     expect(url).toBe(
-      "/api/layout?project=large-project&max_nodes=5000",
+      "/api/layout?project=large-project&max_nodes=2000",
     );
   });
 
@@ -41,8 +43,9 @@ describe("fetchLayout", () => {
 
     const calls = fetchMock.mock.calls as unknown as Array<[string]>;
     const [url] = calls[0];
+    /* Requests above the 2,000-node ceiling are clamped down, not passed raw. */
     expect(url).toBe(
-      "/api/layout?project=large-project&max_nodes=250000",
+      "/api/layout?project=large-project&max_nodes=2000",
     );
   });
 

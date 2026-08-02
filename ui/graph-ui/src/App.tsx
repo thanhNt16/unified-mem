@@ -4,6 +4,8 @@ import { StatsTab } from "./components/StatsTab";
 import { ControlTab } from "./components/ControlTab";
 import type { TabId } from "./lib/types";
 import { useUiMessages } from "./lib/i18n";
+import { loadRuntime } from "./lib/kgAdapter";
+import type { RuntimeConfig } from "./lib/kgAdapter";
 
 const TAB_IDS: TabId[] = ["graph", "stats", "control"];
 
@@ -35,6 +37,19 @@ export function App() {
   const [route, setRoute] = useState<RouteState>(readRoute);
   const { tab: activeTab, project: selectedProject } = route;
 
+  /* Resolve the runtime transport (live /api/capabilities or the packaged
+   * snapshot) exactly once, before any tab renders. */
+  const [runtime, setRuntime] = useState<RuntimeConfig | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    loadRuntime().then((r) => {
+      if (!cancelled) setRuntime(r);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   /* Normalize the URL on first load so it always carries the current route. */
   useEffect(() => {
     const initial = readRoute();
@@ -57,11 +72,24 @@ export function App() {
     setRoute({ tab, project });
   }, []);
 
-  const tabs: { id: TabId; label: string }[] = [
-    { id: "graph", label: t.tabs.graph },
-    { id: "stats", label: t.tabs.projects },
-    { id: "control", label: t.tabs.control },
-  ];
+  /* Runtime has not resolved yet — do not render capability-gated tabs.
+   * Nothing is shown until loadRuntime() decides live vs static. */
+  if (runtime === null) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-background text-foreground">
+        <p className="text-[13px] text-foreground/40">Loading…</p>
+      </div>
+    );
+  }
+
+  /* Gate the tabs on the resolved runtime capabilities. */
+  const tabs: { id: TabId; label: string }[] = [{ id: "graph", label: t.tabs.graph }];
+  if (runtime.capabilities.projects) tabs.push({ id: "stats", label: t.tabs.projects });
+  if (runtime.capabilities.control) tabs.push({ id: "control", label: t.tabs.control });
+
+  /* A route pointing at a hidden tab falls back to the always-available graph. */
+  const supported = new Set(tabs.map((tab) => tab.id));
+  const effectiveTab = supported.has(activeTab) ? activeTab : "graph";
 
   return (
     <div className="h-screen flex flex-col bg-background text-foreground">
@@ -88,7 +116,7 @@ export function App() {
                   className={`px-3 py-1 rounded-md text-[12px] font-medium transition-all ${
                     disabled
                       ? "text-muted-foreground/30 cursor-not-allowed"
-                      : activeTab === tab.id
+                      : effectiveTab === tab.id
                         ? "bg-primary/15 text-primary"
                         : "text-muted-foreground hover:text-foreground hover:bg-white/[0.04]"
                   }`}
@@ -120,13 +148,14 @@ export function App() {
 
       {/* Content */}
       <main className="flex-1 min-h-0">
-        {activeTab === "graph" ? (
-          <GraphTab project={selectedProject} />
-        ) : activeTab === "control" ? (
+        {effectiveTab === "graph" ? (
+          <GraphTab project={selectedProject} runtime={runtime} />
+        ) : effectiveTab === "control" ? (
           <ControlTab />
         ) : (
           <StatsTab
             onSelectProject={(p) => navigate("graph", p)}
+            capabilities={runtime.capabilities}
           />
         )}
       </main>

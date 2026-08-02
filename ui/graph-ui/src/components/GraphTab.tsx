@@ -27,6 +27,14 @@ import { ResizeHandle } from "./ResizeHandle";
 import { ErrorBoundary } from "./ErrorBoundary";
 import type { GraphNode, GraphData, RepoInfo } from "../lib/types";
 import { colorForStatus } from "../lib/colors";
+import { ALL_CAPABILITIES, type RuntimeConfig } from "../lib/kgAdapter";
+
+/* Default transport for callers without an explicit runtime (upstream tests):
+ * live endpoint, all capabilities enabled. */
+const LIVE_RUNTIME: RuntimeConfig = {
+  mode: "live",
+  capabilities: { ...ALL_CAPABILITIES },
+};
 
 /* Persist panel widths */
 function loadWidth(key: string, fallback: number): number {
@@ -57,6 +65,7 @@ function saveNodeBudget(project: string, value: number) {
 
 interface GraphTabProps {
   project: string | null;
+  runtime?: RuntimeConfig;
 }
 
 export function formatGraphLimitNotice(data: GraphData | null): string | null {
@@ -64,8 +73,9 @@ export function formatGraphLimitNotice(data: GraphData | null): string | null {
   return `Showing ${data.nodes.length.toLocaleString("en-US")} of ${data.total_nodes.toLocaleString("en-US")} nodes (${data.edges.length.toLocaleString("en-US")} edges). Raise the node budget or use filters.`;
 }
 
-export function GraphTab({ project }: GraphTabProps) {
-  const { data, loading, error, progress, fetchOverview } = useGraphData();
+export function GraphTab({ project, runtime = LIVE_RUNTIME }: GraphTabProps) {
+  const caps = runtime.capabilities;
+  const { data, loading, error, progress, fetchOverview } = useGraphData(runtime);
   const [highlightedIds, setHighlightedIds] = useState<Set<number> | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
@@ -106,11 +116,11 @@ export function GraphTab({ project }: GraphTabProps) {
   /* Missed skeleton (#963): the file structure of files the indexer could
    * not fully cover, shown as a white satellite cluster beside the code
    * galaxy. Toggle only hides/shows it — the data rides along with every
-   * code-graph layout. */
-  const [showMissedSkeleton, setShowMissedSkeleton] = useState(true);
+   * code-graph layout. Rendered only when the runtime reports missed_graph. */
+  const [showMissedSkeleton, setShowMissedSkeleton] = useState(caps.missed_graph);
 
   /* Dead-code view: recolor by status + status-based filters */
-  const [deadCodeView, setDeadCodeView] = useState(false);
+  const [deadCodeView, setDeadCodeView] = useState(caps.dead_code);
   const [showOnlyDead, setShowOnlyDead] = useState(false);
   const [hideEntryPoints, setHideEntryPoints] = useState(false);
   const [hideTests, setHideTests] = useState(false);
@@ -200,6 +210,7 @@ export function GraphTab({ project }: GraphTabProps) {
   /* Missed skeleton: offset into place and paint white — a ghost of the
    * files the graph could not fully cover, sitting beside the galaxy. */
   const missedSkeleton = useMemo(() => {
+    if (!caps.missed_graph) return null;
     const mg = data?.missed_graph;
     if (!mg || mg.nodes.length === 0) return null;
     const nodes = mg.nodes.map((n) => ({
@@ -217,7 +228,7 @@ export function GraphTab({ project }: GraphTabProps) {
     if (!data) return null;
     const all = missedSkeleton ? [...data.nodes, ...missedSkeleton.nodes] : data.nodes;
     return computeCameraTarget(all, new Set(all.map((n) => n.id)));
-  }, [data, missedSkeleton]);
+  }, [data, missedSkeleton, caps.missed_graph]);
 
   /* With a skeleton beside the galaxy, auto-frame BOTH clusters on load so
    * the side-by-side composition is visible without manual zooming. */
@@ -416,6 +427,7 @@ export function GraphTab({ project }: GraphTabProps) {
           missedView={showMissedSkeleton}
           missedCount={data?.missed_graph?.nodes.filter((n) => n.label === "File").length ?? 0}
           onToggleMissedView={() => setShowMissedSkeleton((v) => !v)}
+          capabilities={caps}
         />
         <Sidebar
           nodes={filteredData.nodes}
@@ -583,6 +595,7 @@ export function GraphTab({ project }: GraphTabProps) {
                   setSelectedPath(null);
                 }}
                 onNavigate={handleNavigateToNode}
+                capabilities={caps}
               />
             )}
           </div>

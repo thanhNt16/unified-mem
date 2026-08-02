@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GraphTab } from "./GraphTab";
 import type { GraphData } from "../lib/types";
+import type { RuntimeConfig } from "../lib/kgAdapter";
 
 /* GraphScene renders a WebGL <Canvas> which jsdom can't run — stub it out. */
 vi.mock("./GraphScene", () => ({
@@ -60,5 +61,38 @@ describe("GraphTab dead-code filters", () => {
     /* Toggling "Show only dead code" hides the non-dead node. */
     fireEvent.click(screen.getByRole("button", { name: /Show only dead code/ }));
     expect(await screen.findByText(/filtered from 2/)).toBeInTheDocument();
+  });
+});
+
+describe("GraphTab capability gates", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("omits dead-code and missed-graph controls when the runtime reports them unsupported", async () => {
+    const unsupported: RuntimeConfig = {
+      mode: "live",
+      capabilities: {
+        graph: true,
+        projects: false,
+        control: false,
+        index: false,
+        code_view: false,
+        adr: false,
+        dead_code: false,
+        missed_graph: false,
+      },
+    };
+    mockLayoutFetch(SAMPLE);
+    render(<GraphTab project="demo" runtime={unsupported} />);
+
+    /* Panel still loads — the graph itself is always available. */
+    expect(await screen.findByText("Filters")).toBeInTheDocument();
+
+    /* Dead-code and missed-graph sections are absent, not disabled. */
+    expect(screen.queryByText("Dead code")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Show only dead code/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Missed files")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Show missed skeleton/ })).not.toBeInTheDocument();
   });
 });

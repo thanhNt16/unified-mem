@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { colorForLabel, STATUS_LEGEND } from "../lib/colors";
 import type { GraphData } from "../lib/types";
+import { ALL_CAPABILITIES, type CapabilitySet } from "../lib/kgAdapter";
 
 interface FilterPanelProps {
   data: GraphData;
@@ -26,7 +27,12 @@ interface FilterPanelProps {
   missedView: boolean;
   missedCount: number;
   onToggleMissedView: () => void;
+  /* Capability gates — default to all enabled so existing callers keep the
+   * full upstream panel. */
+  capabilities?: CapabilitySet;
 }
+
+const ALL_GATES: CapabilitySet = { ...ALL_CAPABILITIES };
 
 /* Checkbox row matching the existing "Show labels" toggle style */
 function CheckRow({
@@ -83,6 +89,7 @@ export function FilterPanel({
   missedView,
   missedCount,
   onToggleMissedView,
+  capabilities = ALL_GATES,
 }: FilterPanelProps) {
   const { labelCounts, edgeTypeCounts, statusCounts } = useMemo(() => {
     const lc = new Map<string, number>();
@@ -173,75 +180,79 @@ export function FilterPanel({
       {/* Missed skeleton (#963): white satellite cluster of files the indexer
           could not fully cover, shown beside the code galaxy. Click it to
           focus; click the code galaxy to come back. */}
-      <div className="px-4 pt-2 border-t border-border/30 space-y-2 shrink-0">
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] text-foreground/30 uppercase tracking-widest">
-            Missed files
-          </span>
-          {missedCount > 0 && (
-            <span className="text-[10px] text-foreground/50 tabular-nums">
-              {missedCount.toLocaleString()} files
+      {capabilities.missed_graph && (
+        <div className="px-4 pt-2 border-t border-border/30 space-y-2 shrink-0">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-foreground/30 uppercase tracking-widest">
+              Missed files
             </span>
-          )}
+            {missedCount > 0 && (
+              <span className="text-[10px] text-foreground/50 tabular-nums">
+                {missedCount.toLocaleString()} files
+              </span>
+            )}
+          </div>
+          <CheckRow
+            checked={missedView}
+            onToggle={onToggleMissedView}
+            label="Show missed skeleton"
+          />
+          <p className="text-[9px] leading-snug text-foreground/30">
+            {missedCount > 0
+              ? "White satellite = files not fully indexed (best-effort). Click it to focus, click the galaxy to return."
+              : "No known misses (best-effort — not a completeness guarantee)."}
+          </p>
         </div>
-        <CheckRow
-          checked={missedView}
-          onToggle={onToggleMissedView}
-          label="Show missed skeleton"
-        />
-        <p className="text-[9px] leading-snug text-foreground/30">
-          {missedCount > 0
-            ? "White satellite = files not fully indexed (best-effort). Click it to focus, click the galaxy to return."
-            : "No known misses (best-effort — not a completeness guarantee)."}
-        </p>
-      </div>
+      )}
 
       {/* Dead-code view */}
-      <div className="px-4 pt-2 border-t border-border/30 space-y-2 shrink-0">
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] text-foreground/30 uppercase tracking-widest">
-            Dead code
-          </span>
-          <span className="text-[10px] text-red-400/80 tabular-nums">
-            {deadCount.toLocaleString()} dead
-          </span>
-        </div>
-
-        <CheckRow
-          checked={deadCodeView}
-          onToggle={onToggleDeadCodeView}
-          label="Color by status"
-        />
-        <CheckRow
-          checked={showOnlyDead}
-          onToggle={onToggleShowOnlyDead}
-          label="Show only dead code"
-        />
-        <CheckRow
-          checked={hideEntryPoints}
-          onToggle={onToggleHideEntryPoints}
-          label="Hide entry points"
-        />
-        <CheckRow checked={hideTests} onToggle={onToggleHideTests} label="Hide tests" />
-
-        {/* Legend (only meaningful while colored by status) */}
-        {deadCodeView && (
-          <div className="flex flex-wrap gap-x-2 gap-y-1 pt-1">
-            {STATUS_LEGEND.map((s) => (
-              <span
-                key={s.status}
-                className="inline-flex items-center gap-1 text-[9px] text-foreground/40"
-              >
-                <span
-                  className="w-[6px] h-[6px] rounded-full"
-                  style={{ backgroundColor: s.color }}
-                />
-                {s.label}
-              </span>
-            ))}
+      {capabilities.dead_code && (
+        <div className="px-4 pt-2 border-t border-border/30 space-y-2 shrink-0">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-foreground/30 uppercase tracking-widest">
+              Dead code
+            </span>
+            <span className="text-[10px] text-red-400/80 tabular-nums">
+              {deadCount.toLocaleString()} dead
+            </span>
           </div>
-        )}
-      </div>
+
+          <CheckRow
+            checked={deadCodeView}
+            onToggle={onToggleDeadCodeView}
+            label="Color by status"
+          />
+          <CheckRow
+            checked={showOnlyDead}
+            onToggle={onToggleShowOnlyDead}
+            label="Show only dead code"
+          />
+          <CheckRow
+            checked={hideEntryPoints}
+            onToggle={onToggleHideEntryPoints}
+            label="Hide entry points"
+          />
+          <CheckRow checked={hideTests} onToggle={onToggleHideTests} label="Hide tests" />
+
+          {/* Legend (only meaningful while colored by status) */}
+          {deadCodeView && (
+            <div className="flex flex-wrap gap-x-2 gap-y-1 pt-1">
+              {STATUS_LEGEND.map((s) => (
+                <span
+                  key={s.status}
+                  className="inline-flex items-center gap-1 text-[9px] text-foreground/40"
+                >
+                  <span
+                    className="w-[6px] h-[6px] rounded-full"
+                    style={{ backgroundColor: s.color }}
+                  />
+                  {s.label}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Display options — pinned footer */}
       <div className="px-4 py-2.5 border-t border-border/20 shrink-0">

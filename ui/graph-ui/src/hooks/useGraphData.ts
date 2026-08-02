@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import type { GraphData } from "../lib/types";
+import { ALL_CAPABILITIES, graphUrl, type RuntimeConfig } from "../lib/kgAdapter";
 
 export interface LoadProgress {
   receivedBytes: number;
@@ -18,6 +19,13 @@ interface UseGraphDataResult {
   ) => void;
   fetchDetail: (project: string, centerNode: string) => void;
 }
+
+/* Default transport for callers without an explicit runtime (upstream tests):
+ * live endpoint, all capabilities enabled. */
+const LIVE_RUNTIME: RuntimeConfig = {
+  mode: "live",
+  capabilities: { ...ALL_CAPABILITIES },
+};
 
 /* Node budget: how many nodes the layout endpoint is asked for. The default
  * keeps first paint fast; the user can raise it in 5k steps up to the hard
@@ -45,10 +53,15 @@ export async function fetchLayout(
   maxNodes = GRAPH_RENDER_NODE_LIMIT,
   onProgress?: (progress: LoadProgress) => void,
   graph: GraphVariant = "code",
+  runtime: RuntimeConfig = LIVE_RUNTIME,
 ): Promise<GraphData> {
-  const params = new URLSearchParams({ project, max_nodes: String(maxNodes) });
-  if (graph === "missed") params.set("graph", "missed");
-  const res = await fetch(`/api/layout?${params}`);
+  /* Route every layout fetch through the adapter: static deployments read the
+   * packaged snapshot; live deployments hit /api/layout with the adapter's
+   * clamped 1..2000 budget. The missed-graph variant is a live-only query. */
+  const base = graphUrl(runtime, project, maxNodes);
+  const url =
+    graph === "missed" && runtime.mode === "live" ? `${base}&graph=missed` : base;
+  const res = await fetch(url);
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
@@ -86,7 +99,7 @@ export async function fetchLayout(
 
 const NO_PROGRESS: LoadProgress = { receivedBytes: 0, totalBytes: null };
 
-export function useGraphData(): UseGraphDataResult {
+export function useGraphData(runtime: RuntimeConfig = LIVE_RUNTIME): UseGraphDataResult {
   const [data, setData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,7 +111,7 @@ export function useGraphData(): UseGraphDataResult {
       setError(null);
       setProgress(NO_PROGRESS);
       try {
-        const result = await fetchLayout(project, maxNodes, setProgress, graph);
+        const result = await fetchLayout(project, maxNodes, setProgress, graph, runtime);
         setData(result);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to fetch layout");
@@ -106,7 +119,7 @@ export function useGraphData(): UseGraphDataResult {
         setLoading(false);
       }
     },
-    [],
+    [runtime],
   );
 
   const fetchDetail = useCallback(
@@ -116,7 +129,7 @@ export function useGraphData(): UseGraphDataResult {
       setProgress(NO_PROGRESS);
       try {
         /* TODO: detail level with center_node filtering */
-        const result = await fetchLayout(project, undefined, setProgress);
+        const result = await fetchLayout(project, undefined, setProgress, "code", runtime);
         setData(result);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to fetch layout");
@@ -124,7 +137,7 @@ export function useGraphData(): UseGraphDataResult {
         setLoading(false);
       }
     },
-    [],
+    [runtime],
   );
 
   return { data, loading, error, progress, fetchOverview, fetchDetail };

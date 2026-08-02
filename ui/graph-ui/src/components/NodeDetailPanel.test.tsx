@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { NodeDetailPanel } from "./NodeDetailPanel";
 import type { GraphNode, RepoInfo } from "../lib/types";
+import type { CapabilitySet } from "../lib/kgAdapter";
 
 /* Mock the RPC layer so "Show code" resolves without a backend. */
 const callToolMock = vi.fn();
@@ -38,6 +39,37 @@ const REPO: RepoInfo = {
   web_base: `${HTTPS}github.com/org/repo`,
   blob_base: `${HTTPS}github.com/org/repo/blob/main`,
 };
+
+describe("NodeDetailPanel capability gates", () => {
+  it("omits source-code lookup and deep-link controls when code_view is unsupported", () => {
+    const noCodeView: CapabilitySet = {
+      graph: true,
+      projects: false,
+      control: false,
+      index: false,
+      code_view: false,
+      adr: false,
+      dead_code: false,
+      missed_graph: false,
+    };
+    render(
+      <NodeDetailPanel
+        node={NODE}
+        allNodes={[NODE]}
+        allEdges={[]}
+        project="demo"
+        repoInfo={REPO}
+        onClose={() => {}}
+        onNavigate={() => {}}
+        capabilities={noCodeView}
+      />,
+    );
+
+    /* Absent, not disabled: no "Show code" button and no GitHub link. */
+    expect(screen.queryByRole("button", { name: /Show code/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Open on GitHub/ })).not.toBeInTheDocument();
+  });
+});
 
 describe("NodeDetailPanel code preview + deep-link", () => {
   it("renders fetched source as escaped text, never as injected HTML", async () => {

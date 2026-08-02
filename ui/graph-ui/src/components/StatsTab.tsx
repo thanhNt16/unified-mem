@@ -3,10 +3,16 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useProjects } from "../hooks/useProjects";
 import { colorForLabel } from "../lib/colors";
 import { useUiMessages } from "../lib/i18n";
+import { ALL_CAPABILITIES, type CapabilitySet } from "../lib/kgAdapter";
 
 interface StatsTabProps {
   onSelectProject: (project: string) => void;
+  /* Capability gates — default to all enabled so existing callers keep the
+   * full upstream panel. */
+  capabilities?: CapabilitySet;
 }
+
+const ALL_GATES: CapabilitySet = { ...ALL_CAPABILITIES };
 
 /* ── Glowy health dot ───────────────────────────────────── */
 
@@ -497,11 +503,13 @@ export function IndexProgress({ onDone }: { onDone: () => void }) {
 
 /* ── Main Stats Tab ─────────────────────────────────────── */
 
-export function StatsTab({ onSelectProject }: StatsTabProps) {
+export function StatsTab({ onSelectProject, capabilities = ALL_GATES }: StatsTabProps) {
   const t = useUiMessages();
   const { projects, loading, error, refresh } = useProjects();
   const [showModal, setShowModal] = useState(false);
   const [indexing, setIndexing] = useState(false);
+  const canIndex = capabilities.index;
+  const canAdr = capabilities.adr;
 
   const aggregate = useMemo(() => {
     let totalNodes = 0, totalEdges = 0;
@@ -535,12 +543,12 @@ export function StatsTab({ onSelectProject }: StatsTabProps) {
           </div>
         )}
 
-        {indexing && <IndexProgress onDone={() => { setIndexing(false); refresh(); }} />}
+        {canIndex && indexing && <IndexProgress onDone={() => { setIndexing(false); refresh(); }} />}
 
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-[15px] font-semibold text-foreground/80">{t.projects.indexedProjects}</h2>
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowModal(true)} className="px-3 py-1.5 rounded-lg bg-primary/15 hover:bg-primary/25 text-primary text-[12px] font-medium transition-all">+ {t.index.newIndex}</button>
+            {canIndex && <button onClick={() => setShowModal(true)} className="px-3 py-1.5 rounded-lg bg-primary/15 hover:bg-primary/25 text-primary text-[12px] font-medium transition-all">+ {t.index.newIndex}</button>}
             <button onClick={refresh} disabled={loading} className="px-3 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.07] text-[12px] text-foreground/40 font-medium transition-all disabled:opacity-30">{loading ? "..." : t.common.refresh}</button>
           </div>
         </div>
@@ -550,7 +558,7 @@ export function StatsTab({ onSelectProject }: StatsTabProps) {
         {!loading && projects.length === 0 && !error && (
           <div className="text-center py-20">
             <p className="text-foreground/25 text-[13px] mb-2">{t.projects.noIndexedProjects}</p>
-            <button onClick={() => setShowModal(true)} className="px-4 py-2 rounded-lg bg-primary/15 hover:bg-primary/25 text-primary text-[12px] font-medium transition-all">{t.projects.indexFirstRepository}</button>
+            {canIndex && <button onClick={() => setShowModal(true)} className="px-4 py-2 rounded-lg bg-primary/15 hover:bg-primary/25 text-primary text-[12px] font-medium transition-all">{t.projects.indexFirstRepository}</button>}
           </div>
         )}
 
@@ -569,9 +577,9 @@ export function StatsTab({ onSelectProject }: StatsTabProps) {
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <AdrButton project={p.project.name} />
+                    {canAdr && <AdrButton project={p.project.name} />}
                     <button onClick={() => onSelectProject(p.project.name)} className="px-3 py-1.5 rounded-lg bg-primary/15 hover:bg-primary/25 text-primary text-[12px] font-medium transition-all">{t.projects.viewGraph}</button>
-                    <button onClick={() => deleteProject(p.project.name)} className="px-2 py-1.5 rounded-lg hover:bg-destructive/10 text-foreground/20 hover:text-destructive text-[12px] transition-all" title={t.projects.deleteTitle}>✕</button>
+                    {canIndex && <button onClick={() => deleteProject(p.project.name)} className="px-2 py-1.5 rounded-lg hover:bg-destructive/10 text-foreground/20 hover:text-destructive text-[12px] transition-all" title={t.projects.deleteTitle}>✕</button>}
                   </div>
                 </div>
                 {p.schema && (
@@ -595,7 +603,7 @@ export function StatsTab({ onSelectProject }: StatsTabProps) {
           })}
         </div>
       </div>
-      {showModal && <CreateIndexModal onClose={() => setShowModal(false)} onCreated={() => { setIndexing(true); refresh(); }} />}
+      {canIndex && showModal && <CreateIndexModal onClose={() => setShowModal(false)} onCreated={() => { setIndexing(true); refresh(); }} />}
     </ScrollArea>
   );
 }

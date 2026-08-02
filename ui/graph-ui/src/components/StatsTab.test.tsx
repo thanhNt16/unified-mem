@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, act } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StatsTab, IndexProgress } from "./StatsTab";
 import { messages } from "../lib/i18n";
+import type { CapabilitySet } from "../lib/kgAdapter";
 
 function mockProjectsFetch(extra?: (url: string, init?: RequestInit) => Response | undefined) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -253,6 +254,50 @@ describe("StatsTab index modal", () => {
     await waitFor(() => {
       expect(saved).toEqual({ project: "demo", content: "" });
     });
+  });
+});
+
+describe("StatsTab capability gates", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("omits ADR, delete, and index controls even when projects are listed", async () => {
+    const noMutations: CapabilitySet = {
+      graph: true,
+      projects: true,
+      control: false,
+      index: false,
+      code_view: false,
+      adr: false,
+      dead_code: false,
+      missed_graph: false,
+    };
+    mockProjectsFetch((url, init) => {
+      if (url === "/rpc") {
+        const body = JSON.parse(String(init?.body));
+        const result = body.params?.name === "list_projects"
+          ? { projects: [{ name: "demo", root_path: "/repo", indexed_at: "2026-01-01T00:00:00Z" }] }
+          : { node_labels: [], edge_types: [], total_nodes: 0, total_edges: 0 };
+        return new Response(JSON.stringify({ result: { content: [{ text: JSON.stringify(result) }] } }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return undefined;
+    });
+
+    render(<StatsTab onSelectProject={() => {}} capabilities={noMutations} />);
+
+    /* The panel still loads and lists the project (view graph is allowed). */
+    expect(await screen.findByText("demo")).toBeInTheDocument();
+
+    /* Mutation affordances are absent, not disabled. */
+    expect(screen.queryByRole("button", { name: "Index your first repository" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /\+ New Index/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "ADR" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "✕" })).not.toBeInTheDocument();
   });
 });
 

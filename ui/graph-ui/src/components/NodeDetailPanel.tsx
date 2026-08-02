@@ -3,6 +3,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { colorForLabel } from "../lib/colors";
 import { callTool } from "../api/rpc";
 import type { GraphNode, GraphEdge, RepoInfo } from "../lib/types";
+import { ALL_CAPABILITIES, type CapabilitySet } from "../lib/kgAdapter";
 
 interface Connection {
   node: GraphNode;
@@ -18,7 +19,12 @@ interface NodeDetailPanelProps {
   repoInfo: RepoInfo | null;
   onClose: () => void;
   onNavigate: (node: GraphNode) => void;
+  /* Capability gates — default to all enabled so existing callers keep the
+   * full upstream panel. */
+  capabilities?: CapabilitySet;
 }
+
+const ALL_GATES: CapabilitySet = { ...ALL_CAPABILITIES };
 
 interface SnippetResult {
   source?: string;
@@ -53,6 +59,7 @@ export function NodeDetailPanel({
   repoInfo,
   onClose,
   onNavigate,
+  capabilities = ALL_GATES,
 }: NodeDetailPanelProps) {
   const [code, setCode] = useState<string | null>(null);
   const [codeLoading, setCodeLoading] = useState(false);
@@ -143,28 +150,30 @@ export function NodeDetailPanel({
           </p>
         )}
 
-        {/* Code actions */}
-        <div className="flex flex-wrap items-center gap-2 mt-2.5">
-          {canFetchCode && (
-            <button
-              onClick={code ? () => setCode(null) : loadCode}
-              disabled={codeLoading}
-              className="px-2.5 py-1 rounded-md bg-primary/15 text-primary text-[11px] font-medium hover:bg-primary/25 transition-colors disabled:opacity-50"
-            >
-              {codeLoading ? "Loading…" : code ? "Hide code" : "Show code"}
-            </button>
-          )}
-          {ghUrl && (
-            <a
-              href={ghUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-2.5 py-1 rounded-md bg-white/[0.05] text-foreground/60 text-[11px] font-medium hover:bg-white/[0.09] hover:text-foreground/90 transition-colors"
-            >
-              Open on GitHub ↗
-            </a>
-          )}
-        </div>
+        {/* Code actions — shown only when source-code lookup is supported */}
+        {capabilities.code_view && (
+          <div className="flex flex-wrap items-center gap-2 mt-2.5">
+            {canFetchCode && (
+              <button
+                onClick={code ? () => setCode(null) : loadCode}
+                disabled={codeLoading}
+                className="px-2.5 py-1 rounded-md bg-primary/15 text-primary text-[11px] font-medium hover:bg-primary/25 transition-colors disabled:opacity-50"
+              >
+                {codeLoading ? "Loading…" : code ? "Hide code" : "Show code"}
+              </button>
+            )}
+            {ghUrl && (
+              <a
+                href={ghUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-2.5 py-1 rounded-md bg-white/[0.05] text-foreground/60 text-[11px] font-medium hover:bg-white/[0.09] hover:text-foreground/90 transition-colors"
+              >
+                Open on GitHub ↗
+              </a>
+            )}
+          </div>
+        )}
 
         {codeError && <p className="text-[11px] text-red-400/80 mt-2">{codeError}</p>}
         {code && (

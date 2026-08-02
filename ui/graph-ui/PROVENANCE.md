@@ -8,7 +8,10 @@
 ## Local patches
 
 Each local frontend change must be listed here with its file paths and reason.
-The initial vendored tree contains no source patches.
+
+1. `src/lib/kgAdapter.ts` and `src/lib/kgAdapter.test.ts`: select live/static kg transports and parse capabilities fail-closed.
+2. `src/App.tsx`, `src/components/{GraphTab,StatsTab,ControlTab,NodeDetailPanel}.tsx`, and `src/hooks/useGraphData.ts`: route data through the adapter and hide features without kg semantics.
+3. Build configuration changes listed below: produce self-contained relative assets for wheel and Pages deployment.
 
 ## Refresh procedure
 
