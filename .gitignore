@@ -24,3 +24,8 @@ CLAUDE.md
 .kg-install-backups/
 
 .worktrees/
+
+# graph-ui local build artifacts
+ui/graph-ui/node_modules/
+ui/graph-ui/tsconfig.tsbuildinfo
+.pages-dist/

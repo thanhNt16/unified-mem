@@ -53,7 +53,7 @@ def main():
         "truncated_nodes": truncated_nodes,
         "truncated_edges": truncated_edges,
     }
-    out = Path("docs/demo/graph.json")
+    out = Path("ui/graph-ui/snapshots/demo-source.json")
     out.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
     print(f"nodes={len(nodes)} edges={len(edges)} clusters={len(cluster_ids)} bytes={out.stat().st_size}")
     a.conn.close()

@@ -68,7 +68,52 @@ def _cluster_key(data: dict) -> str:
     return str(data.get("type") or "unknown")
 
 
+def _serialize_layout_payload(
+    layout_nodes: list[LayoutNodeInput],
+    layout_edges: list[LayoutEdgeInput],
+    meta: dict[str, dict[str, object]],
+    *,
+    total_nodes: int,
+    truncated_nodes: bool = False,
+    truncated_edges: bool = False,
+) -> dict[str, object]:
+    result = layout_graph(layout_nodes, layout_edges)
+    nodes_out: list[dict[str, object]] = []
+    for pn in result.nodes:
+        m = meta[pn.kg_id]
+        node: dict[str, object] = {
+            "id": pn.render_id, "kg_id": pn.kg_id, "x": pn.x, "y": pn.y, "z": pn.z,
+            "label": m["label"], "name": m["name"], "size": pn.size,
+            "color": m["color"], "in_calls": 0,
+        }
+        if m.get("file_path") is not None:
+            node["file_path"] = m["file_path"]
+        nodes_out.append(node)
+    payload: dict[str, object] = {
+        "nodes": nodes_out,
+        "edges": [{"source": e.source, "target": e.target, "type": e.type} for e in result.edges],
+        "total_nodes": total_nodes, "linked_projects": [],
+        "truncated_nodes": truncated_nodes, "truncated_edges": truncated_edges,
+    }
+    if len(json_bytes(payload)) > _MAX_BYTES:
+        raise PayloadTooLarge("serialized layout payload exceeds 4 MiB")
+    return payload
+
+
 def build_layout_payload(
+    adapter: StorageAdapter,
+    *,
+    max_nodes: int = _MAX_NODES,
+    max_edges: int = _MAX_EDGES,
+) -> dict[str, object]:
+    return _build_layout_payload_impl(adapter, max_nodes=max_nodes, max_edges=max_edges)
+
+
+def build_snapshot_payload(adapter: StorageAdapter) -> dict[str, object]:
+    return build_layout_payload(adapter, max_nodes=_MAX_NODES, max_edges=_MAX_EDGES)
+
+
+def _build_layout_payload_impl(
     adapter: StorageAdapter,
     *,
     max_nodes: int = _MAX_NODES,
@@ -147,43 +192,12 @@ def build_layout_payload(
         LayoutEdgeInput(r["source"], r["target"], r["semantic_type"])
         for r in e_rows
     ]
-    result = layout_graph(layout_nodes, layout_edges)
-
-    nodes_out: list[dict[str, object]] = []
-    for pn in result.nodes:
-        m = meta[pn.kg_id]
-        node: dict[str, object] = {
-            "id": pn.render_id,
-            "kg_id": pn.kg_id,
-            "x": pn.x,
-            "y": pn.y,
-            "z": pn.z,
-            "label": m["label"],
-            "name": m["name"],
-            "size": pn.size,
-            "color": m["color"],
-            "in_calls": 0,
-        }
-        if m["file_path"] is not None:
-            node["file_path"] = m["file_path"]
-        nodes_out.append(node)
-
-    edges_out = [
-        {"source": e.source, "target": e.target, "type": e.type}
-        for e in result.edges
-    ]
-
-    payload: dict[str, object] = {
-        "nodes": nodes_out,
-        "edges": edges_out,
-        "total_nodes": total_nodes,
-        "linked_projects": [],
-        "truncated_nodes": truncated_nodes,
-        "truncated_edges": truncated_edges,
-    }
-    if len(json_bytes(payload)) > _MAX_BYTES:
-        raise PayloadTooLarge("serialized layout payload exceeds 4 MiB")
-    return payload
+    return _serialize_layout_payload(
+        layout_nodes, layout_edges, meta,
+        total_nodes=total_nodes,
+        truncated_nodes=truncated_nodes,
+        truncated_edges=truncated_edges,
+    )
 
 
 def build_project_payload(adapter: StorageAdapter, project_name: str) -> dict[str, object]:

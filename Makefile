@@ -1,7 +1,7 @@
 PKG := kg
 H ?= claude
 
-.PHONY: dev build test install uninstall clean bench evaluate-cbm
+.PHONY: dev build test install uninstall clean bench evaluate-cbm ui-test ui-build snapshot
 
 dev:           ## editable install for working on kg itself
 	uv sync
@@ -26,6 +26,15 @@ clean:
 
 bench:          ## run deterministic benchmark (CI-safe 10-doc tier); requires repo checkout (bench harness lives in ./bench)
 	PYTHONPATH=$(CURDIR) uv run kg bench --scale 10
+
+ui-test:         ## install and test the graph UI frontend
+	cd ui/graph-ui && npm ci && npm test -- --run
+
+ui-build:        ## build and package the graph UI into src/kg/viz/assets
+	uv run python scripts/build_graph_ui.py
+
+snapshot:        ## regenerate packaged assets from the retained snapshot (no npm/tests)
+	uv run python scripts/build_graph_ui.py --skip-install --skip-tests
 
 evaluate-cbm:   ## check CBM regression metric floors
 	PYTHONPATH=$(CURDIR) uv run pytest tests/ -x

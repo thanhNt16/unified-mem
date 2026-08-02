@@ -50,7 +50,7 @@ def main():
         "truncated_nodes": False,
         "truncated_edges": False,
     }
-    out = Path("docs/demo/graph-stress.json")
+    out = Path("ui/graph-ui/snapshots/stress-source.json")
     out.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
     print(f"nodes={len(nodes)} edges={len(edges)} clusters={CLUSTERS} bytes={out.stat().st_size}")
 
