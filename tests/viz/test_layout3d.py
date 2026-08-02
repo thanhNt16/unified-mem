@@ -45,9 +45,11 @@ def test_layout_is_deterministic_finite_and_stably_numbered() -> None:
     assert all(isfinite(v) for n in first.nodes for v in (n.x, n.y, n.z, n.size))
 
 
-def test_layout_has_no_fabricated_call_depth_layer() -> None:
-    result = layout_graph(_nodes(), _edges())
-    assert all(node.z == 0.0 for node in result.nodes)
+def test_layout_produces_deterministic_non_coplanar_z() -> None:
+    first = layout_graph(_nodes(), _edges())
+    second = layout_graph(list(reversed(_nodes())), list(reversed(_edges())))
+    assert len({round(node.z, 9) for node in first.nodes}) > 1
+    assert first == second
 
 
 def test_layout_serialization_is_byte_stable() -> None:
