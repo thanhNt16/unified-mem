@@ -1,7 +1,6 @@
 import json
 import threading
 from http.server import ThreadingHTTPServer
-from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import urlopen
 
@@ -12,8 +11,17 @@ from kg.storage.sqlite import SQLiteAdapter
 from kg.viz.server import _resolve_wiki_page, make_handler
 
 
-def _server(adapter, wiki_dir=None):
-    server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(adapter, wiki_dir))
+def _assets(tmp_path):
+    assets = tmp_path / "assets"
+    (assets / "assets").mkdir(parents=True)
+    (assets / "index.html").write_text("<html>kg</html>", encoding="utf-8")
+    (assets / "assets" / "app.js").write_text("console.log(1)", encoding="utf-8")
+    (assets / "assets" / "app.css").write_text("body{}", encoding="utf-8")
+    return assets
+
+
+def _server(adapter, wiki_dir=None, **kwargs):
+    server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(adapter, wiki_dir, **kwargs))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     return server, f"http://127.0.0.1:{server.server_address[1]}"
@@ -33,33 +41,32 @@ def _adapter(tmp_path):
     return adapter
 
 
-def test_graph_json_active_shape_csp_and_localhost(tmp_path):
-    server, url = _server(_adapter(tmp_path))
+def test_layout_active_shape_csp_and_localhost(tmp_path):
+    server, url = _server(_adapter(tmp_path), assets=_assets(tmp_path))
     try:
         assert server.server_address[0] == "127.0.0.1"
-        with urlopen(url + "/graph.json") as response:
+        with urlopen(url + "/api/layout?max_nodes=2000") as response:
             body = json.load(response)
             assert response.headers.get_content_type() == "application/json"
             assert response.headers["Content-Security-Policy"]
-        assert {node["id"] for node in body["nodes"]} == {"u:person:a", "u:organization:b"}
-        assert all("cluster" in node for node in body["nodes"])
-        assert body["edges"] == [{"source": "u:person:a", "target": "u:organization:b", "semantic_type": "knows"}]
+        assert {node["kg_id"] for node in body["nodes"]} == {"u:person:a", "u:organization:b"}
+        assert all("cluster" not in node for node in body["nodes"])
+        assert len(body["edges"]) == 1
     finally:
         server.shutdown()
         server.server_close()
 
 
-def test_page_is_self_contained_and_escapes_data(tmp_path):
-    server, url = _server(_adapter(tmp_path))
+def test_csp_present_on_page_and_layout_json(tmp_path):
+    server, url = _server(_adapter(tmp_path), assets=_assets(tmp_path))
     try:
         with urlopen(url + "/") as response:
             page = response.read().decode()
-            assert response.headers["Content-Security-Policy"]
-        with urlopen(url + "/graph.json") as response:
-            graph = response.read().decode()
+            csp = response.headers["Content-Security-Policy"]
+            assert response.headers.get_content_type().startswith("text/html")
         assert "https://" not in page
-        assert "&lt;img src=x onerror=1&gt;" in graph
-        assert "<img src=x onerror=1>" not in graph
+        assert "<script>" not in page
+        assert csp
     finally:
         server.shutdown()
         server.server_close()

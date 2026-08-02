@@ -1,5 +1,7 @@
+import json
 import threading
 from http.server import ThreadingHTTPServer
+from importlib.resources import files
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -8,6 +10,35 @@ from kg.ontology import Edge, Node
 from kg.storage.sqlite import SQLiteAdapter
 from kg.viz.api import build_layout_payload
 from kg.viz.server import make_handler
+
+
+class _Response:
+    def __init__(self, status, headers, body=b""):
+        self.status = status
+        self.headers = headers
+        self._body = body
+
+    def json(self):
+        return json.loads(self._body)
+
+
+def _get(url):
+    try:
+        with urlopen(url) as response:
+            return _Response(response.status, response.headers, response.read())
+    except HTTPError as exc:
+        return _Response(exc.code, exc.headers, exc.read())
+
+
+def _assets():
+    return files("kg.viz").joinpath("assets")
+
+
+def _server(adapter):
+    server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(adapter, None, assets=_assets()))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, f"http://127.0.0.1:{server.server_address[1]}"
 
 
 def _adapter(tmp_path):
@@ -53,29 +84,24 @@ def test_layout_payload_filters_active_rows_and_follows_contract(tmp_path):
     )
     assert all("status" not in n and "qualified_name" not in n for n in payload["nodes"])
 
-    # Tombstoning excludes the node from both totals and the payload.
     adapter.upsert_nodes([Node(id="a", type="person", name="A", status="tombstoned")])
     payload = build_layout_payload(adapter)
     assert payload["total_nodes"] == 1
     assert [n["kg_id"] for n in payload["nodes"]] == ["b"]
 
 
-def test_graph_etag_returns_304(tmp_path):
+def test_layout_etag_returns_304(tmp_path):
     adapter = _adapter(tmp_path)
-    server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(adapter, None))
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    url = f"http://127.0.0.1:{server.server_address[1]}/graph.json"
+    server, url = _server(adapter)
     try:
-        with urlopen(url) as response:
-            etag = response.headers["ETag"]
-        try:
-            urlopen(Request(url, headers={"If-None-Match": etag}))
-        except HTTPError as error:
-            assert error.code == 304
-            assert error.read() == b""
-        else:
-            raise AssertionError("expected HTTP 304")
+        first = _get(url + "/api/layout")
+        etag = first.headers["ETag"]
+        assert etag
+        assert first.status == 200
+        response = _get(Request(url + "/api/layout", headers={"If-None-Match": etag}))
+        assert response.status == 304
+        assert response._body == b""
+        assert response.headers["ETag"] == etag
     finally:
         server.shutdown()
         server.server_close()

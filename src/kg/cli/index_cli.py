@@ -24,7 +24,12 @@ def _paths(root: Path) -> KgPaths:
     return KgPaths.for_root(root / ".kg")
 
 
-def _project(paths: KgPaths, root: Path, mode: str) -> CoverageReport:
+def index_project(root: Path, project_name: str) -> None:
+    """Index a project using the production moderate mode boundary."""
+    _project(_paths(root), Path(root).resolve(), "moderate", project_name)
+
+
+def _project(paths: KgPaths, root: Path, mode: str, project_name: str | None = None) -> CoverageReport:
     cfg = Config.from_path(paths.config)
     plan = plan_index(paths, root, mode, "tree-sitter-v1",
                       incremental_threshold=cfg.index.incremental_threshold)
@@ -40,7 +45,7 @@ def _project(paths: KgPaths, root: Path, mode: str) -> CoverageReport:
                 report.record(record.rel_path, "skipped", "unsupported")
                 continue
             try:
-                projection = project_code_file(source, paths.root.name, record.sha256, "tree-sitter-v1")
+                projection = project_code_file(source, project_name or paths.root.name, record.sha256, "tree-sitter-v1")
                 nodes = [node.to_ontology() for node in projection.nodes]
                 edges = [edge.to_ontology() for edge in projection.edges
                          if edge.to_id.startswith("code:")]
@@ -63,7 +68,7 @@ def _project(paths: KgPaths, root: Path, mode: str) -> CoverageReport:
 def scan(path: Path, mode: str = typer.Option("moderate", "--mode")) -> None:
     """Scan a repository; skip unchanged sources."""
     paths = _paths(path)
-    report = _project(paths, Path(path).resolve(), mode)
+    report = _project(paths, Path(path).resolve(), mode, paths.root.name)
     body = report.body()["sources"]
     typer.echo(" ".join(f"{key}: {value}" for key, value in body.items() if value))
 

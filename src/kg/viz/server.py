@@ -1,258 +1,40 @@
-"""Local-first kg viz server. Binds 127.0.0.1 ONLY — never 0.0.0.0."""
+"""Loopback-only server for the packaged graph UI and read-only APIs."""
 from __future__ import annotations
 
-import html
 import json
-import os
+import mimetypes
+import subprocess
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from importlib.resources import files
 from pathlib import Path, PurePosixPath
+from urllib.parse import parse_qs, urlsplit
 
-from kg.community import louvain_cached
 from kg.storage.base import StorageAdapter
-
-# Cap graph payload to keep browser-side perf bounded.
-_MAX_NODES = 2000
-_MAX_EDGES = 4000
-_MAX_BYTES = 4 * 1024 * 1024  # 4 MiB
-
-_CSP = (
-    "default-src 'self'; "
-    "script-src 'self'; "
-    "style-src 'self' 'unsafe-inline'; "
-    "connect-src 'self'"
+from kg.viz.api import (
+    PayloadTooLarge,
+    build_capabilities,
+    build_layout_payload,
+    build_project_payload,
+    build_schema_payload,
+    json_bytes,
 )
+from kg.viz.indexing import IndexBusy, IndexManager, InvalidProjectPath
 
-_HTML = """<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>kg viz</title>
-<style>
-:root { color-scheme: light dark; }
-body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: #fafafa; color: #222; }
-header { padding: 8px 12px; border-bottom: 1px solid #ddd; }
-main { display: grid; grid-template-columns: 1fr 320px; height: calc(100vh - 41px); }
-#canvas { background: #fff; position: relative; overflow: hidden; }
-#side { padding: 12px; border-left: 1px solid #ddd; overflow: auto; background: #f6f6f6; }
-h1 { font-size: 16px; margin: 0; }
-.node { stroke: #fff; stroke-width: 1.5px; cursor: pointer; }
-.edge { stroke: #ccc; stroke-width: 1px; }
-.label { font: 10px sans-serif; pointer-events: none; }
-small { color: #666; }
-</style>
-</head>
-<body>
-<header><h1>kg viz</h1><small id="meta"></small></header>
-<main>
-<svg id="canvas" width="100%" height="100%"></svg>
-<aside id="side"><em>Loading...</em></aside>
-</main>
-<script src="/app.js"></script>
-</body>
-</html>
-"""
-
-_JS = """
-// Minimal self-contained force-directed renderer. No CDN, no network.
-const svg = document.getElementById('canvas');
-const side = document.getElementById('side');
-const W = svg.clientWidth, H = svg.clientHeight;
-const NS = 'http://www.w3.org/2000/svg';
-const POLE_COLORS = {
-  person:'#3b82f6', organization:'#ef4444', location:'#10b981', event:'#f59e0b',
-  object:'#8b5cf6', preference:'#ec4899', fact:'#0ea5e9', document:'#6b7280',
-  chunk:'#9ca3af', conversation:'#22c55e', session:'#a78bfa'
-};
-function nodeColor(t){ return POLE_COLORS[t] || '#475569'; }
-
-fetch('/graph.json').then(r => r.json()).then(data => {
-  document.getElementById('meta').textContent = data.nodes.length + ' nodes / ' + data.edges.length + ' edges';
-  if (!data.nodes.length){ side.innerHTML = '<em>Empty graph.</em>'; return; }
-  const nodes = data.nodes.map(n => ({...n, x: Math.random()*W, y: Math.random()*H, vx:0, vy:0}));
-  const byId = {}; nodes.forEach(n => byId[n.id] = n);
-  const edges = data.edges.filter(e => byId[e.source] && byId[e.target]);
-  // simple force layout
-  for (let iter=0; iter<300; iter++){
-    edges.forEach(e => {
-      const a = byId[e.source], b = byId[e.target];
-      let dx = b.x-a.x, dy = b.y-a.y; const d = Math.hypot(dx,dy)||1;
-      const f = (d-80)*0.01;
-      a.vx += f*dx/d; a.vy += f*dy/d; b.vx -= f*dx/d; b.vy -= f*dy/d;
-    });
-    nodes.forEach(n => {
-      n.x += n.vx*0.85; n.y += n.vy*0.85; n.vx*=0.9; n.vy*=0.9;
-      n.x = Math.max(20, Math.min(W-20, n.x));
-      n.y = Math.max(20, Math.min(H-20, n.y));
-    });
-  }
-  // render
-  edges.forEach(e => {
-    const ln = document.createElementNS(NS,'line');
-    ln.setAttribute('x1',byId[e.source].x); ln.setAttribute('y1',byId[e.source].y);
-    ln.setAttribute('x2',byId[e.target].x); ln.setAttribute('y2',byId[e.target].y);
-    ln.setAttribute('class','edge'); svg.appendChild(ln);
-  });
-  nodes.forEach(n => {
-    const c = document.createElementNS(NS,'circle');
-    c.setAttribute('cx',n.x); c.setAttribute('cy',n.y);
-    c.setAttribute('r', 5 + (n.degree||0)*0.5);
-    c.setAttribute('fill', nodeColor(n.type));
-    c.setAttribute('class','node');
-    c.onclick = () => {
-      side.innerHTML = '<h3>' + (n.name||n.id) + '</h3>' +
-        '<p><b>type:</b> ' + (n.type||'?') + '<br>' +
-        '<b>cluster:</b> ' + (n.cluster??-1) + '<br>' +
-        '<b>degree:</b> ' + (n.degree||0) + '</p>' +
-        '<p>' + (n.summary||'') + '</p>';
-    };
-    svg.appendChild(c);
-    const t = document.createElementNS(NS,'text');
-    t.setAttribute('x', n.x+8); t.setAttribute('y', n.y+4);
-    t.setAttribute('class','label');
-    t.textContent = (n.name||n.id).slice(0,20);
-    svg.appendChild(t);
-  });
-  side.innerHTML = '<em>Click a node.</em>';
-}).catch(e => { side.innerHTML = '<b>error:</b> ' + e; });
-"""
-
-
-def _graph_payload(adapter: StorageAdapter) -> dict:
-    n_rows = adapter.conn.execute(
-        "SELECT id, data, status FROM nodes WHERE status='active' ORDER BY id LIMIT ?",
-        (_MAX_NODES + 1,),
-    ).fetchall()
-    truncated_nodes = len(n_rows) > _MAX_NODES
-    n_rows = n_rows[:_MAX_NODES]
-
-    clusters = louvain_cached(adapter)
-    active_ids = {r["id"] for r in n_rows}
-    if not active_ids:
-        return {"nodes": [], "edges": [], "truncated_nodes": truncated_nodes,
-                "truncated_edges": False}
-    placeholders = ",".join("?" * len(active_ids))
-
-    # Indexed endpoint aggregation bounded to the capped node set.
-    deg: dict[str, int] = {}
-    for column in ("source", "target"):
-        rows = adapter.conn.execute(
-            f"SELECT {column}, COUNT(*) AS degree FROM edges "
-            f"WHERE status='active' AND {column} IN ({placeholders}) GROUP BY {column}",
-            list(active_ids),
-        ).fetchall()
-        for row in rows:
-            deg[row[column]] = deg.get(row[column], 0) + row["degree"]
-
-    e_rows = adapter.conn.execute(
-        f"SELECT source, target, semantic_type FROM edges WHERE status='active' "
-        f"AND source IN ({placeholders}) AND target IN ({placeholders}) ORDER BY id LIMIT ?",
-        [*active_ids, *active_ids, _MAX_EDGES + 1],
-    ).fetchall()
-    truncated_edges = len(e_rows) > _MAX_EDGES
-    edges_out = [
-        {"source": r["source"], "target": r["target"], "semantic_type": r["semantic_type"]}
-        for r in e_rows[:_MAX_EDGES]
-    ]
-
-    def esc(s) -> str:
-        return html.escape(str(s or ""))
-
-    nodes_out = []
-    for r in n_rows:
-        try:
-            data = json.loads(r["data"])
-        except (ValueError, TypeError):
-            data = {}
-        nid = r["id"]
-        nodes_out.append({
-            "id": esc(nid),
-            "name": esc(data.get("name") or nid),
-            "type": esc(data.get("type") or ""),
-            "summary": esc(data.get("summary") or ""),
-            "degree": deg.get(nid, 0),
-            "cluster": clusters.get(nid, -1),
-        })
-
-    return {
-        "nodes": nodes_out,
-        "edges": edges_out,
-        "truncated_nodes": truncated_nodes,
-        "truncated_edges": truncated_edges,
-    }
-
-
-def _cluster_payload(adapter: StorageAdapter) -> dict:
-    """Stage-1 coarse view: aggregate nodes by Louvain cluster.
-
-    Returns one synthetic node per community with member count + size-scaled
-    weight, so the browser can render an overview of 10k+ node graphs without
-    melting. Pairs with /graph.json (Stage-2 detail, capped at _MAX_NODES).
-    """
-    from kg.community import louvain_cached
-    clusters = louvain_cached(adapter)
-    if not clusters:
-        return {"clusters": [], "total_nodes": 0, "note": "empty graph"}
-
-    generation = adapter.generation()  # type: ignore[attr-defined]
-    # louvain_cached materializes this mapping. Keep only 50 member IDs per cluster.
-    members: dict[int, list[str]] = {}
-    counts: dict[int, int] = {}
-    for nid, cid in clusters.items():
-        counts[cid] = counts.get(cid, 0) + 1
-        if len(members.setdefault(cid, [])) < 50:
-            members[cid].append(nid)
-    if not counts:
-        return {"clusters": [], "total_nodes": 0, "note": "clusters not materialized yet"}
-
-    cluster_nodes = [
-        {
-            "id": f"cluster:{cid}",
-            "type": "cluster",
-            "name": f"Cluster {cid}",
-            "member_count": counts[cid],
-            "members": members[cid],
-        }
-        for cid in sorted(counts)
-    ]
-
-    # SQL aggregation for inter-cluster edges leverages cached cluster IDs.
-    inter_rows = adapter.conn.execute(
-        "SELECT MIN(ca.cluster_id, cb.cluster_id) AS a, "
-        "MAX(ca.cluster_id, cb.cluster_id) AS b, COUNT(*) AS w "
-        "FROM edges e "
-        "JOIN node_clusters ca ON ca.node_id = e.source "
-        "JOIN node_clusters cb ON cb.node_id = e.target "
-        "WHERE e.status='active' AND ca.generation=? AND cb.generation=? "
-        "AND ca.cluster_id != cb.cluster_id GROUP BY a, b ORDER BY w DESC",
-        (generation, generation),
-    ).fetchall()
-    cluster_edges = [
-        {"source": f"cluster:{r['a']}", "target": f"cluster:{r['b']}", "weight": r["w"]}
-        for r in inter_rows[:_MAX_EDGES]
-    ]
-    return {
-        "clusters": cluster_nodes,
-        "cluster_edges": cluster_edges,
-        "total_nodes": len(clusters),
-        "total_clusters": len(counts),
-        "note": (f"Coarse view: {len(counts)} clusters from {len(clusters)} nodes. "
-                 f"Use /graph.json for detail (capped at {_MAX_NODES} nodes)."),
-    }
+_MAX_NODES = 2_000
+_MAX_BODY = 64 * 1024
+_CSP = (
+    "default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; "
+    "script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; "
+    "font-src 'self' data:; worker-src 'self' blob:; object-src 'none'; "
+    "base-uri 'none'; frame-ancestors 'none'"
+)
 
 
 def _resolve_wiki_page(wiki_dir: Path, raw_slug: str) -> Path | None:
-    """Resolve a slug inside wiki/entities/; reject traversal, symlinks, escape."""
-    if not raw_slug or not isinstance(raw_slug, str):
+    if not raw_slug or any(ord(c) < 32 for c in raw_slug) or "\\" in raw_slug or "\x00" in raw_slug:
         return None
-    if any(ord(c) < 32 for c in raw_slug):
-        return None
-    if "\\" in raw_slug or "\x00" in raw_slug:
-        return None
-    # Reject URL scheme, parent segments.
     p = PurePosixPath(raw_slug.replace("\\", "/"))
-    if p.is_absolute() or ".." in p.parts or len(p.parts) != 1:
-        return None
-    if not p.name.endswith(".md"):
+    if p.is_absolute() or ".." in p.parts or len(p.parts) != 1 or not p.name.endswith(".md"):
         return None
     entities = (Path(wiki_dir) / "entities").resolve(strict=False)
     target = (entities / p.name).resolve(strict=False)
@@ -260,103 +42,225 @@ def _resolve_wiki_page(wiki_dir: Path, raw_slug: str) -> Path | None:
         target.relative_to(entities)
     except ValueError:
         return None
-    # Symlink escape: target must be inside entities and not a symlink itself.
-    if target.is_symlink():
-        return None
-    if not target.is_file():
-        return None
-    return target
+    return target if target.is_file() and not target.is_symlink() else None
+
+
+def _safe_json_error(code: str, message: str) -> bytes:
+    return json_bytes({"error": {"code": code, "message": message}})
+
+
+def _repo_info(root: Path) -> dict[str, str]:
+    root = root.resolve()
+
+    def run(*args: str) -> str:
+        try:
+            return subprocess.run(["git", *args], cwd=root, text=True, capture_output=True,
+                                  check=False, timeout=2).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            return ""
+    branch = run("branch", "--show-current")
+    remote = run("config", "--get", "remote.origin.url")
+    if "@" in remote and "://" in remote:
+        scheme, rest = remote.split("://", 1)
+        remote = scheme + "://" + rest.rsplit("@", 1)[-1]
+    remote = remote.removesuffix(".git").rstrip("/")
+    web = remote
+    if remote.startswith("git@"):
+        web = "https://" + remote[4:].replace(":", "/")
+    elif remote.startswith("ssh://"):
+        web = "https://" + remote.removeprefix("ssh://").split("/", 1)[-1]
+    web = web.rstrip("/")
+    return {"root_path": str(root), "branch": branch, "remote_url": remote,
+            "web_base": web, "blob_base": f"{web}/blob/{branch}" if web and branch else ""}
 
 
 class _Handler(BaseHTTPRequestHandler):
-    db_path: Path
-    wiki_dir: Path | None
+    adapter_factory = None
+    wiki_dir: Path | None = None
+    assets = None
+    index_manager: IndexManager | None = None
+    project_name = ""
+    project_root: Path | None = None
 
-    def log_message(self, *args):  # silence default stderr logging
+    def log_message(self, *_args):
         pass
 
     def _adapter(self):
-        # Open a per-request connection: SQLite connections are thread-bound,
-        # and ThreadingHTTPServer serves each request on its own thread.
-        from kg.storage.sqlite import SQLiteAdapter
-        return SQLiteAdapter(self.db_path)
+        return type(self).adapter_factory()
 
-    def _send(self, status: int, body: bytes, content_type: str, extra: dict | None = None) -> None:
+    def _send(self, status: int, body: bytes, content_type: str = "application/json; charset=utf-8", extra=None):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Content-Security-Policy", _CSP)
-        if extra:
-            for k, v in extra.items():
-                self.send_header(k, v)
+        for key, value in (extra or {}).items():
+            self.send_header(key, value)
         self.end_headers()
-        # never write body on HEAD; BaseHTTPRequestHandler doesn't auto-suppress
         if self.command != "HEAD":
             self.wfile.write(body)
 
+    def _json(self, status: int, payload: object, extra=None):
+        self._send(status, json_bytes(payload), extra=extra)
+
+    def _asset(self, path: str):
+        raw = urlsplit(path).path
+        rel = raw.lstrip("/") or "index.html"
+        p = PurePosixPath(rel)
+        if p.is_absolute() or ".." in p.parts:
+            return self._send(400, _safe_json_error("invalid_path", "invalid asset path"))
+        try:
+            resource = self.assets.joinpath(*p.parts)
+            if not resource.is_file():
+                if p.suffix:
+                    return self._send(404, _safe_json_error("not_found", "not found"))
+                resource = self.assets.joinpath("index.html")
+                if not resource.is_file():
+                    return self._send(404, _safe_json_error("not_found", "not found"))
+            body = resource.read_bytes()
+        except (OSError, TypeError):
+            return self._send(404, _safe_json_error("not_found", "not found"))
+        mime = mimetypes.guess_type(str(p))[0] or "application/octet-stream"
+        if mime.startswith("text/") or mime == "application/javascript":
+            mime += "; charset=utf-8"
+        self._send(200, body, mime)
+
     def do_GET(self):  # noqa: N802
-        path = self.path.split("?", 1)[0]
-        if path == "/" or path == "/index.html":
-            self._send(200, _HTML.encode("utf-8"), "text/html; charset=utf-8")
-            return
-        if path == "/app.js":
-            self._send(200, _JS.encode("utf-8"), "application/javascript; charset=utf-8")
-            return
-        if path in {"/graph.json", "/clusters.json"}:
+        parsed = urlsplit(self.path)
+        path, query = parsed.path, parse_qs(parsed.query)
+        if path.startswith("/wiki/"):
+            if self.wiki_dir is None:
+                return self._send(404, _safe_json_error("not_found", "not found"))
+            page = _resolve_wiki_page(self.wiki_dir, path[6:])
+            if page is None:
+                return self._send(404, _safe_json_error("not_found", "not found"))
+            try:
+                return self._send(200, page.read_bytes(), "text/markdown; charset=utf-8")
+            except OSError:
+                return self._send(404, _safe_json_error("not_found", "not found"))
+        if path == "/api/layout":
+            raw = query.get("max_nodes", [str(_MAX_NODES)])[0]
+            try:
+                limit = min(_MAX_NODES, int(raw, 10))
+                if limit < 1:
+                    raise ValueError
+            except ValueError:
+                return self._send(400, _safe_json_error("invalid_query", "max_nodes must be a positive decimal"))
             adapter = self._adapter()
             try:
                 etag = f'"{adapter.generation()}"'
                 if self.headers.get("If-None-Match") == etag:
-                    self._send(304, b"", "application/json; charset=utf-8", {"ETag": etag})
-                    return
-                payload = _graph_payload(adapter) if path == "/graph.json" else _cluster_payload(adapter)
-                body = json.dumps(payload).encode("utf-8")
-                if path == "/graph.json" and len(body) > _MAX_BYTES:
-                    body = json.dumps({"nodes": payload["nodes"][:500],
-                                       "edges": payload["edges"][:1000],
-                                       "truncated_nodes": True,
-                                       "truncated_edges": True}).encode("utf-8")
-                self._send(200, body, "application/json; charset=utf-8", {"ETag": etag})
+                    return self._send(304, b"", extra={"ETag": etag})
+                try:
+                    payload = build_layout_payload(adapter, max_nodes=limit)
+                except PayloadTooLarge:
+                    return self._send(413, _safe_json_error("payload_too_large", "layout payload too large"))
+                return self._json(200, payload, {"ETag": etag})
             finally:
                 adapter.conn.close()
-            return
-        if path.startswith("/wiki/") and self.wiki_dir is not None:
-            slug = path[len("/wiki/"):]
-            resolved = _resolve_wiki_page(self.wiki_dir, slug)
-            if resolved is None:
-                self._send(404, b"not found", "text/plain; charset=utf-8")
-                return
+        if path == "/api/capabilities":
+            return self._json(200, build_capabilities(static=False))
+        if path == "/api/repo-info":
+            return self._json(200, _repo_info(self.project_root or Path.cwd()))
+        if path == "/api/ui-config":
+            return self._json(200, {"lang": "en", "upstream_issues_url": "https://github.com/DeusData/codebase-memory-mcp/issues/new"})
+        if path == "/api/index-status":
+            return self._json(200, self.index_manager.status() if self.index_manager else [])
+        if path == "/api/project":
+            adapter = self._adapter()
             try:
-                content = resolved.read_text(encoding="utf-8")
-            except OSError:
-                self._send(404, b"not found", "text/plain; charset=utf-8")
-                return
-            self._send(200, content.encode("utf-8"), "text/markdown; charset=utf-8")
-            return
-        self._send(404, b"not found", "text/plain; charset=utf-8")
+                return self._json(200, build_project_payload(adapter, self.project_name))
+            finally:
+                adapter.conn.close()
+        if path == "/api/schema":
+            adapter = self._adapter()
+            try:
+                return self._json(200, build_schema_payload(adapter))
+            finally:
+                adapter.conn.close()
+        if path.startswith("/api/"):
+            return self._send(404, _safe_json_error("not_found", "not found"))
+        return self._asset(path)
 
     def do_HEAD(self):  # noqa: N802
         self.do_GET()
 
+    def do_POST(self):  # noqa: N802
+        try:
+            length = int(self.headers.get("Content-Length", "-1"))
+        except ValueError:
+            length = -1
+        if length < 0 or length > _MAX_BODY:
+            return self._send(413, _safe_json_error("payload_too_large", "request body too large"))
+        try:
+            body = json.loads(self.rfile.read(length))
+        except (ValueError, OSError):
+            return self._send(400, _safe_json_error("invalid_json", "invalid JSON body"))
+        if self.path.split("?", 1)[0] == "/api/index":
+            if not isinstance(body, dict) or not isinstance(body.get("root_path"), str) or not isinstance(body.get("project_name"), str):
+                return self._send(400, _safe_json_error("invalid_body", "root_path and project_name are required strings"))
+            if self.index_manager is None:
+                return self._send(503, _safe_json_error("unavailable", "indexing unavailable"))
+            try:
+                job = self.index_manager.start(body["root_path"], body["project_name"])
+            except InvalidProjectPath:
+                return self._send(400, _safe_json_error("invalid_project", "invalid project path or name"))
+            except IndexBusy:
+                return self._send(429, _safe_json_error("busy", "an index job is already running"))
+            return self._json(202, {"status": job.status, "slot": job.slot, "path": job.path})
+        if self.path.split("?", 1)[0] == "/rpc":
+            return self._rpc(body)
+        return self._send(404, _safe_json_error("not_found", "not found"))
 
-def make_handler(adapter: StorageAdapter, wiki_dir: Path | None):
-    class H(_Handler):
+    def _rpc(self, body):
+        if not isinstance(body, dict) or body.get("method") != "tools/call" or not isinstance(body.get("params"), dict):
+            return self._json(200, {"jsonrpc": "2.0", "id": body.get("id") if isinstance(body, dict) else None,
+                                    "error": {"code": -32601, "message": "method not found"}})
+        params = body["params"]
+        tool = params.get("name")
+        if tool not in {"list_projects", "get_graph_schema"}:
+            return self._json(200, {"jsonrpc": "2.0", "id": body.get("id"), "error": {"code": -32601, "message": "tool not found"}})
+        adapter = self._adapter()
+        try:
+            if tool == "list_projects":
+                result = {"projects": [build_project_payload(adapter, self.project_name)]}
+            else:
+                result = build_schema_payload(adapter)
+            text = json.dumps(result, separators=(",", ":"))
+        finally:
+            adapter.conn.close()
+        return self._json(200, {"jsonrpc": "2.0", "id": body.get("id"), "result": {"content": [{"type": "text", "text": text}]}})
+
+
+def make_handler(adapter_factory, wiki_dir: Path | None = None, *, assets=None, index_manager=None,
+                 project_name: str = "", project_root: Path | None = None):
+    if not callable(adapter_factory):
+        adapter = adapter_factory
+        adapter_factory = lambda: type(adapter)(adapter.db_path)
+    if assets is None:
+        assets = files("kg.viz").joinpath("assets")
+    class Handler(_Handler):
         pass
-    H.db_path = Path(adapter.db_path)  # type: ignore[attr-defined]
-    H.wiki_dir = wiki_dir  # type: ignore[attr-defined]
-    return H
+    Handler.adapter_factory = adapter_factory
+    Handler.wiki_dir = wiki_dir
+    Handler.assets = assets
+    Handler.index_manager = index_manager
+    Handler.project_name = project_name
+    Handler.project_root = project_root
+    return Handler
 
 
-def serve(adapter: StorageAdapter, port: int = 9749, *,
-          wiki_dir: Path | None = None, open_browser: bool = False) -> None:
-    """Serve kg viz on 127.0.0.1:port. Never binds 0.0.0.0.
-
-    ``open_browser`` is accepted but ignored — never auto-open. Callers print
-    the URL to stdout for the user to click. (S5: no auto-open.)
-    """
-    del open_browser  # accepted for API symmetry; intentionally unused
-    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(adapter, wiki_dir))
+def serve(adapter: StorageAdapter, port: int = 9749, *, wiki_dir: Path | None = None, open_browser: bool = False) -> None:
+    from kg.cli.index_cli import index_project
+    root = Path(adapter.db_path).resolve().parent
+    if root.name == ".kg":
+        root = root.parent
+    manager = IndexManager(index_project)
+    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(adapter, wiki_dir, index_manager=manager,
+        project_name=root.name, project_root=root))
     print(f"kg viz → http://127.0.0.1:{port}/")
+    if open_browser:
+        import webbrowser
+        webbrowser.open(f"http://127.0.0.1:{port}/")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
