@@ -6,7 +6,8 @@ from urllib.request import Request, urlopen
 import kg.community as community
 from kg.ontology import Edge, Node
 from kg.storage.sqlite import SQLiteAdapter
-from kg.viz.server import _graph_payload, make_handler
+from kg.viz.api import build_layout_payload
+from kg.viz.server import make_handler
 
 
 def _adapter(tmp_path):
@@ -19,7 +20,7 @@ def _adapter(tmp_path):
     return adapter
 
 
-def test_graph_payload_reuses_and_invalidates_cluster_cache(tmp_path, monkeypatch):
+def test_louvain_cache_reuses_and_invalidates_on_generation(tmp_path, monkeypatch):
     adapter = _adapter(tmp_path)
     calls = 0
     original = community.louvain
@@ -30,12 +31,33 @@ def test_graph_payload_reuses_and_invalidates_cluster_cache(tmp_path, monkeypatc
         return original(adapter)
 
     monkeypatch.setattr(community, "louvain", spy)
-    _graph_payload(adapter)
-    _graph_payload(adapter)
+    community.louvain_cached(adapter)
+    community.louvain_cached(adapter)
     assert calls == 1
     adapter.upsert_nodes([Node(id="c", type="person", name="C")])
-    _graph_payload(adapter)
+    community.louvain_cached(adapter)
     assert calls == 2
+
+
+def test_layout_payload_filters_active_rows_and_follows_contract(tmp_path):
+    adapter = _adapter(tmp_path)
+    payload = build_layout_payload(adapter)
+    assert payload["total_nodes"] == 2
+    assert len(payload["nodes"]) == 2
+    assert [n["kg_id"] for n in payload["nodes"]] == ["a", "b"]
+    assert payload["truncated_nodes"] is False
+    assert payload["truncated_edges"] is False
+    assert all(
+        {"id", "kg_id", "x", "y", "z", "label", "name", "size", "color", "in_calls"}
+        <= set(n) for n in payload["nodes"]
+    )
+    assert all("status" not in n and "qualified_name" not in n for n in payload["nodes"])
+
+    # Tombstoning excludes the node from both totals and the payload.
+    adapter.upsert_nodes([Node(id="a", type="person", name="A", status="tombstoned")])
+    payload = build_layout_payload(adapter)
+    assert payload["total_nodes"] == 1
+    assert [n["kg_id"] for n in payload["nodes"]] == ["b"]
 
 
 def test_graph_etag_returns_304(tmp_path):

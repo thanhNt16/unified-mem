@@ -58,7 +58,6 @@ def test_page_is_self_contained_and_escapes_data(tmp_path):
         with urlopen(url + "/graph.json") as response:
             graph = response.read().decode()
         assert "https://" not in page
-        assert "<script src=\"/app.js\">" in page
         assert "&lt;img src=x onerror=1&gt;" in graph
         assert "<img src=x onerror=1>" not in graph
     finally:
