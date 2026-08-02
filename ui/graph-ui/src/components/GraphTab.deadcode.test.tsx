@@ -69,6 +69,44 @@ describe("GraphTab capability gates", () => {
     vi.unstubAllGlobals();
   });
 
+  it("loads the packaged snapshot on a static bare root (no project)", async () => {
+    const staticRuntime: RuntimeConfig = {
+      mode: "static",
+      capabilities: {
+        graph: true,
+        projects: false,
+        control: false,
+        index: false,
+        code_view: false,
+        adr: false,
+        dead_code: false,
+        missed_graph: false,
+      },
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "./graph-snapshot.json") {
+        return new Response(JSON.stringify(SAMPLE), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response("{}", { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<GraphTab project={null} runtime={staticRuntime} />);
+
+    /* The graph loader runs despite the missing project and fetches the
+     * snapshot — no "Select a project" placeholder, no /api/layout call. */
+    expect(await screen.findByText("Filters")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith("./graph-snapshot.json");
+    const layoutCalls = fetchMock.mock.calls.filter((c) =>
+      String(c[0]).startsWith("/api/layout"));
+    expect(layoutCalls).toHaveLength(0);
+    expect(screen.queryByText(/Select a project/)).not.toBeInTheDocument();
+  });
+
   it("omits dead-code and missed-graph controls when the runtime reports them unsupported", async () => {
     const unsupported: RuntimeConfig = {
       mode: "live",

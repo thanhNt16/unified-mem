@@ -4,7 +4,7 @@ import { StatsTab } from "./components/StatsTab";
 import { ControlTab } from "./components/ControlTab";
 import type { TabId } from "./lib/types";
 import { useUiMessages } from "./lib/i18n";
-import { loadRuntime } from "./lib/kgAdapter";
+import { loadRuntime, DEFAULT_CAPABILITIES } from "./lib/kgAdapter";
 import type { RuntimeConfig } from "./lib/kgAdapter";
 
 const TAB_IDS: TabId[] = ["graph", "stats", "control"];
@@ -42,9 +42,18 @@ export function App() {
   const [runtime, setRuntime] = useState<RuntimeConfig | null>(null);
   useEffect(() => {
     let cancelled = false;
-    loadRuntime().then((r) => {
-      if (!cancelled) setRuntime(r);
-    });
+    /* loadRuntime never rejects on transport absence, but guard anyway so an
+     * unexpected failure cannot strand the app on the loading screen. */
+    loadRuntime().then(
+      (r) => {
+        if (!cancelled) setRuntime(r);
+      },
+      () => {
+        if (!cancelled) {
+          setRuntime({ mode: "static", capabilities: { ...DEFAULT_CAPABILITIES } });
+        }
+      },
+    );
     return () => {
       cancelled = true;
     };
@@ -106,7 +115,10 @@ export function App() {
           {/* Tabs inline in header */}
           <nav className="flex items-center gap-0.5">
             {tabs.map((tab) => {
-              const disabled = tab.id === "graph" && !selectedProject;
+              /* Graph is reachable without a project only when static mode
+               * serves the snapshot (live mode requires a selection first). */
+              const disabled =
+                tab.id === "graph" && !selectedProject && runtime.mode !== "static";
               return (
                 <button
                   key={tab.id}

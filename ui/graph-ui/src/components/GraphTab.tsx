@@ -76,6 +76,12 @@ export function formatGraphLimitNotice(data: GraphData | null): string | null {
 export function GraphTab({ project, runtime = LIVE_RUNTIME }: GraphTabProps) {
   const caps = runtime.capabilities;
   const { data, loading, error, progress, fetchOverview } = useGraphData(runtime);
+
+  /* Static mode serves the packaged snapshot, which ignores the project — so a
+   * bare static root (project="") still reaches the graph loader. Downstream
+   * budget persistence/repo-info key on an internal non-empty label. */
+  const isStatic = runtime.mode === "static";
+  const projectKey = isStatic ? (project || "snapshot") : (project ?? "");
   const [highlightedIds, setHighlightedIds] = useState<Set<number> | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
@@ -103,11 +109,11 @@ export function GraphTab({ project, runtime = LIVE_RUNTIME }: GraphTabProps) {
   const commitBudget = useCallback(() => {
     const parsed = clampNodeBudget(parseInt(budgetDraft, 10));
     setBudgetDraft(String(parsed));
-    if (project && parsed !== budget.value) {
-      saveNodeBudget(project, parsed);
-      setBudget({ project, value: parsed });
+    if (projectKey && parsed !== budget.value) {
+      saveNodeBudget(projectKey, parsed);
+      setBudget({ project: projectKey, value: parsed });
     }
-  }, [budgetDraft, project, budget.value]);
+  }, [budgetDraft, projectKey, budget.value]);
 
   /* Filter state — all enabled by default */
   const [enabledLabels, setEnabledLabels] = useState<Set<string>>(new Set());
@@ -191,21 +197,22 @@ export function GraphTab({ project, runtime = LIVE_RUNTIME }: GraphTabProps) {
 
   /* Re-read the persisted budget when the project changes… */
   useEffect(() => {
-    if (project) {
-      const value = loadNodeBudget(project);
-      setBudget({ project, value });
+    if (projectKey) {
+      const value = loadNodeBudget(projectKey);
+      setBudget({ project: projectKey, value });
       setBudgetDraft(String(value));
     }
-  }, [project]);
+  }, [projectKey]);
 
-  /* …and fetch only once budget and project agree (one fetch per change). */
+  /* …and fetch only once budget and project agree (one fetch per change).
+   * Static mode fetches the snapshot even with no project selected. */
   useEffect(() => {
-    if (project && budget.project === project) {
-      fetchOverview(project, budget.value);
+    if (projectKey && budget.project === projectKey) {
+      fetchOverview(projectKey, budget.value);
       setHighlightedIds(null);
       setSelectedPath(null);
     }
-  }, [project, budget, fetchOverview]);
+  }, [projectKey, budget, fetchOverview]);
 
   /* Missed skeleton: offset into place and paint white — a ghost of the
    * files the graph could not fully cover, sitting beside the galaxy. */
@@ -250,14 +257,15 @@ export function GraphTab({ project, runtime = LIVE_RUNTIME }: GraphTabProps) {
     }
   }, [selectedNode, missedSkeleton, overviewTarget]);
 
-  /* Fetch git remote metadata for GitHub deep-links */
+  /* Fetch git remote metadata for GitHub deep-links (live-only: static mode
+   * has no repo-info endpoint and the snapshot carries no remote metadata). */
   useEffect(() => {
-    if (!project) {
+    if (isStatic || !projectKey) {
       setRepoInfo(null);
       return;
     }
     let cancelled = false;
-    fetch(`/api/repo-info?project=${encodeURIComponent(project)}`)
+    fetch(`/api/repo-info?project=${encodeURIComponent(projectKey)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!cancelled && d && !d.error) setRepoInfo(d as RepoInfo);
@@ -357,7 +365,9 @@ export function GraphTab({ project, runtime = LIVE_RUNTIME }: GraphTabProps) {
     setEnabledEdgeTypes(new Set());
   }, []);
 
-  if (!project) {
+  /* A live bare root has no project yet; static mode serves the snapshot
+   * regardless of project, so it must NOT be blocked here. */
+  if (!projectKey && !isStatic) {
     return (
       <div className="flex items-center justify-center h-full">
         <p className="text-white/30 text-sm">
@@ -380,7 +390,7 @@ export function GraphTab({ project, runtime = LIVE_RUNTIME }: GraphTabProps) {
       <div className="flex items-center justify-center h-full">
         <div className="text-center p-8">
           <p className="text-red-400 text-sm mb-2">{error}</p>
-          <Button variant="outline" size="sm" onClick={() => fetchOverview(project)}>
+          <Button variant="outline" size="sm" onClick={() => fetchOverview(projectKey)}>
             Retry
           </Button>
         </div>
@@ -542,7 +552,7 @@ export function GraphTab({ project, runtime = LIVE_RUNTIME }: GraphTabProps) {
                   setSelectedPath(null);
                   setSelectedNode(null);
                   setCameraTarget(null);
-                  fetchOverview(project, budget.value);
+                  fetchOverview(projectKey, budget.value);
                 }}
               >
                 Refresh

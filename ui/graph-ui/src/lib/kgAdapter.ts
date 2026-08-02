@@ -88,8 +88,16 @@ export async function loadRuntime(): Promise<RuntimeConfig> {
     return { mode: "live", capabilities: caps };
   } catch {
     /* Live endpoint absent (404) or unreachable — serve the packaged snapshot. */
+  }
+
+  try {
     const staticCaps = await fetchJson("./capabilities.json");
     return { mode: "static", capabilities: staticCapabilities(staticCaps) };
+  } catch {
+    /* Neither transport available: fail closed to the packaged snapshot with
+     * mutation capabilities off rather than rejecting (which would strand the
+     * App on an infinite loading screen). */
+    return { mode: "static", capabilities: { ...DEFAULT_CAPABILITIES } };
   }
 }
 

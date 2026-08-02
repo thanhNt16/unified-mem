@@ -39,4 +39,15 @@ describe("kg adapter", () => {
     expect(runtime.capabilities.adr).toBe(false);
     expect(runtime.capabilities.code_view).toBe(false);
   });
+
+  it("never rejects when both transports fail — falls back to static defaults", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 404 });
+    vi.stubGlobal("fetch", fetchMock);
+    const runtime = await loadRuntime();
+    expect(runtime.mode).toBe("static");
+    expect(runtime.capabilities).toEqual(DEFAULT_CAPABILITIES);
+    /* Both endpoints were probed. */
+    expect(fetchMock).toHaveBeenCalledWith("/api/capabilities");
+    expect(fetchMock).toHaveBeenCalledWith("./capabilities.json");
+  });
 });
