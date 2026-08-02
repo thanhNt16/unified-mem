@@ -27,9 +27,9 @@ const LIVE_RUNTIME: RuntimeConfig = {
 };
 
 /* Node budget: how many nodes the layout endpoint is asked for. The default
- * keeps first paint fast; the user can raise it in 5k steps up to the hard
- * ceiling (mirrors HARD_MAX_NODES in src/ui/layout3d.c). Edges always follow
- * the budget — the server returns every edge between the loaded nodes. */
+ * keeps first paint fast; the user can raise it in 500-node steps up to the
+ * 2,000-node ceiling. Edges always follow the budget — the server returns
+ * every edge between the loaded nodes. */
 export const GRAPH_RENDER_NODE_LIMIT = 2000;
 export const GRAPH_NODE_BUDGET_STEP = 500;
 export const GRAPH_NODE_BUDGET_MAX = 2000;

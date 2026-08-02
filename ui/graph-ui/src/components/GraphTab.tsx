@@ -533,7 +533,7 @@ export function GraphTab({ project, runtime }: GraphTabProps) {
                   }}
                   className="w-24 bg-transparent text-right text-xs font-mono text-cyan-200/90 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   aria-label="Node budget: how many nodes to load"
-                  title="How many nodes to load (5,000 steps, edges between loaded nodes follow automatically)"
+                  title={`How many nodes to load (up to ${GRAPH_NODE_BUDGET_MAX.toLocaleString()}, edges between loaded nodes follow automatically)`}
                 />
               </div>
               <DisplaySettingsMenu settings={display} onChange={updateDisplay} />
