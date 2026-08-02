@@ -520,11 +520,6 @@ export function StatsTab({ onSelectProject, capabilities = ALL_GATES }: StatsTab
     return { projects: projects.length, nodes: totalNodes, edges: totalEdges };
   }, [projects]);
 
-  const deleteProject = useCallback(async (name: string) => {
-    if (!confirm(t.projects.deleteConfirm(name))) return;
-    try { await fetch(`/api/project?name=${encodeURIComponent(name)}`, { method: "DELETE" }); refresh(); } catch { /* */ }
-  }, [refresh, t.projects]);
-
   return (
     <ScrollArea className="h-full">
       <div className="p-8 max-w-3xl mx-auto">
@@ -579,7 +574,6 @@ export function StatsTab({ onSelectProject, capabilities = ALL_GATES }: StatsTab
                   <div className="flex items-center gap-1.5 shrink-0">
                     {canAdr && <AdrButton project={p.project.name} />}
                     <button onClick={() => onSelectProject(p.project.name)} className="px-3 py-1.5 rounded-lg bg-primary/15 hover:bg-primary/25 text-primary text-[12px] font-medium transition-all">{t.projects.viewGraph}</button>
-                    {canIndex && <button onClick={() => deleteProject(p.project.name)} className="px-2 py-1.5 rounded-lg hover:bg-destructive/10 text-foreground/20 hover:text-destructive text-[12px] transition-all" title={t.projects.deleteTitle}>✕</button>}
                   </div>
                 </div>
                 {p.schema && (

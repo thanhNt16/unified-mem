@@ -263,12 +263,12 @@ describe("StatsTab capability gates", () => {
     vi.unstubAllGlobals();
   });
 
-  it("omits ADR, delete, and index controls even when projects are listed", async () => {
-    const noMutations: CapabilitySet = {
+  it("keeps indexing while omitting unsupported ADR and deletion controls", async () => {
+    const capabilities: CapabilitySet = {
       graph: true,
       projects: true,
       control: false,
-      index: false,
+      index: true,
       code_view: false,
       adr: false,
       dead_code: false,
@@ -288,14 +288,14 @@ describe("StatsTab capability gates", () => {
       return undefined;
     });
 
-    render(<StatsTab onSelectProject={() => {}} capabilities={noMutations} />);
+    render(<StatsTab onSelectProject={() => {}} capabilities={capabilities} />);
 
     /* The panel still loads and lists the project (view graph is allowed). */
     expect(await screen.findByText("demo")).toBeInTheDocument();
 
     /* Mutation affordances are absent, not disabled. */
     expect(screen.queryByRole("button", { name: "Index your first repository" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /\+ New Index/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /\+ New Index/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "ADR" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "✕" })).not.toBeInTheDocument();
   });
