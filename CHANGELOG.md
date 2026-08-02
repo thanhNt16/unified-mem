@@ -26,7 +26,7 @@ flagged in [the architecture overview](docs/architecture/overview.md).
 - **Added** `kg viz [--port 9749]` materialized community cache (generation
   counter + `node_clusters` table).
 - **Docs** consolidated: current status report, benchmark guide rewrite, stale
-  completed plans/research proposals removed. 795 passed, 3 skipped.
+  completed plans/research proposals removed. 795 passed, 4 skipped (2 Pi-installer tests paused — incomplete harness work).
 
 ## [M6] — 2026-07-27 — Benchmarks & Docs
 

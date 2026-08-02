@@ -1,5 +1,7 @@
 # Pi Harness Installation Implementation Plan
 
+> **Status: paused / partially implemented.** Task 1 shipped; remaining tasks incomplete. Do not treat this plan as complete.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add `kg install pi` to install Pi-local kg CLI tools, skills, context, and opt-out session capture.

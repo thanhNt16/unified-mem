@@ -67,9 +67,7 @@ make install H=cursor  # ...targeting Cursor instead of the default (claude)
 make uninstall
 ```
 
-`make install` requires `uv` (and the target harness). M5 wires the
-`kg install <harness>` auto-configuration step; for M0 only the files layer is
-present.
+`make install` requires `uv` (and the target harness).
 
 ## Sources supported by `kg raw add`
 
@@ -89,7 +87,7 @@ When `--title` is omitted, the first H1 heading of the document is used.
 
 ```bash
 uv sync --group dev      # install + dev deps
-uv run pytest            # 41 tests, ~1s
+uv run pytest            # full test suite
 uv run pytest -k chunking
 ```
 
