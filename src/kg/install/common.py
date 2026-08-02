@@ -347,6 +347,22 @@ def uninstall(manifest: InstallManifest, harness: Harness, project_root: Path) -
         for path, snapshot in skills:
             shutil.rmtree(path)
             removed_skills.append((path, snapshot))
+        # Prune newly-empty parent dirs of removed artifacts (e.g. .pi/extensions/).
+        prune: set[Path] = set()
+        for path, _ in originals:
+            parent = path.parent
+            while parent != project and parent.is_relative_to(project):
+                prune.add(parent); parent = parent.parent
+        for path, _ in removed_skills:
+            parent = path.parent
+            while parent != project and parent.is_relative_to(project):
+                prune.add(parent); parent = parent.parent
+        for parent in sorted(prune, key=lambda p: len(p.parts), reverse=True):
+            try:
+                if parent.is_dir() and not any(parent.iterdir()):
+                    parent.rmdir()
+            except OSError:
+                pass
         mpath = manifest_path(project)
         if mpath.exists(): mpath.unlink()
         backups = project / ".kg-install-backups" / manifest.transaction_id

@@ -147,9 +147,10 @@ class _Octant:
             self.children[o] = child
         return child
 
-    def repulse(self, px: float, py: float, pz: float, mm: float, si: int, kr: float) -> tuple[float, float]:
+    def repulse(self, px: float, py: float, pz: float, mm: float, si: int, kr: float) -> tuple[float, float, float]:
         fx: float = 0.0
         fy: float = 0.0
+        fz: float = 0.0
         stack = [self]
         while stack:
             n = stack.pop()
@@ -165,11 +166,12 @@ class _Octant:
                 f = kr * mm * n.total_mass / d
                 fx += f * dx / d
                 fy += f * dy / d
+                fz += f * dz / d
                 continue
             if n.children is not None:
                 for child in n.children:
                     stack.append(child)
-        return fx, fy
+        return fx, fy, fz
 
 
 def _local_optimize(bodies: list[_Body], edges: list[tuple[int, int]]) -> None:
@@ -187,33 +189,42 @@ def _local_optimize(bodies: list[_Body], edges: list[tuple[int, int]]) -> None:
         if n:
             mnx = min(body.x for body in bodies)
             mny = min(body.y for body in bodies)
+            mnz = min(body.z for body in bodies)
             mxx = max(body.x for body in bodies)
             mxy = max(body.y for body in bodies)
-            half = max(mxx - mnx, mxy - mny) * 0.5 + 1.0
-            root = _Octant((mnx + mxx) * 0.5, (mny + mxy) * 0.5, 0.0, half)
+            mxz = max(body.z for body in bodies)
+            half = max(mxx - mnx, mxy - mny, mxz - mnz) * 0.5 + 1.0
+            root = _Octant((mnx + mxx) * 0.5, (mny + mxy) * 0.5, (mnz + mxz) * 0.5, half)
             for i, body in enumerate(bodies):
                 root.insert(i, body.x, body.y, body.z, body.mass, 0)
             for i, body in enumerate(bodies):
-                body.fx, body.fy = root.repulse(body.x, body.y, body.z, body.mass, i, LOCAL_REPULSION)
+                body.fx, body.fy, body.fz = root.repulse(
+                    body.x, body.y, body.z, body.mass, i, LOCAL_REPULSION
+                )
         for s, t in edges:
             if s < 0 or s >= n or t < 0 or t >= n:
                 continue
             dx = bodies[t].x - bodies[s].x
             dy = bodies[t].y - bodies[s].y
+            dz = bodies[t].z - bodies[s].z
             bodies[s].fx += dx * LOCAL_ATTRACTION
             bodies[s].fy += dy * LOCAL_ATTRACTION
+            bodies[s].fz += dz * LOCAL_ATTRACTION
             bodies[t].fx -= dx * LOCAL_ATTRACTION
             bodies[t].fy -= dy * LOCAL_ATTRACTION
+            bodies[t].fz -= dz * LOCAL_ATTRACTION
         for body in bodies:
             body.fx += (body.ax - body.x) * LOCAL_ANCHOR_K * body.mass
             body.fy += (body.ay - body.y) * LOCAL_ANCHOR_K * body.mass
+            body.fz += (body.az - body.z) * LOCAL_ANCHOR_K * body.mass
         for body in bodies:
-            fm = sqrt(body.fx * body.fx + body.fy * body.fy)
+            fm = sqrt(body.fx * body.fx + body.fy * body.fy + body.fz * body.fz)
             speed = 1.0
             if speed * fm > MAX_DISPLACEMENT:
                 speed = MAX_DISPLACEMENT / (fm + 0.001)
             body.x += body.fx * speed
             body.y += body.fy * speed
+            body.z += body.fz * speed
 
 
 def layout_graph(
@@ -234,7 +245,7 @@ def layout_graph(
         jitter = 20.0
         x = radius * cos(angle) + rng.next() * jitter
         y = radius * sin(angle) + rng.next() * jitter
-        z = 0.0
+        z = rng.next() * jitter
         mass = float(node.degree + 1)
         bodies.append(_Body(x, y, z, x, y, z, 0.0, 0.0, 0.0, mass))
 
