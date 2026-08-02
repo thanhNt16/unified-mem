@@ -75,7 +75,7 @@ class IndexManager:
             raise InvalidProjectPath("project name must match [A-Za-z0-9._-]{1,128}")
         try:
             root = Path(root_path).expanduser().resolve(strict=True)
-        except (OSError, RuntimeError) as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             raise InvalidProjectPath(f"root path does not resolve to an existing path: {exc}") from exc
         if not root.is_dir():
             raise InvalidProjectPath("root path must be an existing directory")

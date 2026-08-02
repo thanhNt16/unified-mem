@@ -72,6 +72,8 @@ def test_live_routes_are_self_contained(http_server):
 
 def test_spa_asset_traversal_is_rejected(http_server):
     assert get(http_server, "/assets/../../pyproject.toml").status in (400, 404)
+    assert get(http_server, "/assets/%2e%2e/").status in (400, 404)
+    assert get(http_server, "/assets/..%2f..%2f").status in (400, 404)
 
 
 def test_index_validation_and_busy_status(http_server, tmp_path):
@@ -184,6 +186,17 @@ def test_no_browse_or_adr_routes(http_server):
     assert get(http_server, "/api/adr").status == 404
     assert get(http_server, "/api/logs").status == 404
     assert get(http_server, "/api/processes").status == 404
+
+
+def test_rpc_non_string_tool_name_rejected(http_server):
+    for bad_name in (["list_projects"], {"name": "list_projects"}):
+        resp = _post_json(http_server, "/rpc", {
+            "jsonrpc": "2.0", "id": 11, "method": "tools/call",
+            "params": {"name": bad_name, "arguments": {}},
+        })
+        assert resp.status == 200
+        assert resp.json()["error"]["code"] == -32601
+        assert resp.json()["error"]["message"]
 
 
 def test_unknown_tool_rpc_and_bad_body(http_server):

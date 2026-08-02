@@ -58,7 +58,7 @@ def _seed_project(tmp_path, monkeypatch):
 # -- 1. VIZ ---------------------------------------------------------------
 
 
-def test_viz_graph_json(tmp_path, monkeypatch):
+def test_viz_layout_json(tmp_path, monkeypatch):
     project = _seed_project(tmp_path, monkeypatch)
     adapter = SQLiteAdapter(KgPaths.for_cwd().kg_db)
     from kg.viz.server import serve
@@ -69,7 +69,7 @@ def test_viz_graph_json(tmp_path, monkeypatch):
     t.start()
     _wait_port(port)
     try:
-        req = urllib.request.Request(f"http://127.0.0.1:{port}/graph.json")
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/layout")
         resp = urllib.request.urlopen(req, timeout=5)
         assert resp.status == 200
         ct = resp.headers.get("Content-Type", "")
@@ -80,10 +80,9 @@ def test_viz_graph_json(tmp_path, monkeypatch):
         assert len(data["nodes"]) >= 3
         assert len(data["edges"]) >= 2
         node_ids = {n["id"] for n in data["nodes"]}
-        assert all(n["cluster"] >= -1 for n in data["nodes"])
-        assert all(n["degree"] >= 0 for n in data["nodes"])
-        for n in data["nodes"]:
-            assert "<" not in n["name"] and "&" not in n["name"], f"unescaped: {n['name']!r}"
+        assert all("cluster" not in n for n in data["nodes"])
+        assert all(n["in_calls"] >= 0 for n in data["nodes"])
+        assert all("status" not in n and "qualified_name" not in n for n in data["nodes"])
         edge_srcs = {e["source"] for e in data["edges"]}
         edge_tgts = {e["target"] for e in data["edges"]}
         assert edge_srcs.issubset(node_ids)

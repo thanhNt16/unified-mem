@@ -7,7 +7,7 @@ import subprocess
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
 from pathlib import Path, PurePosixPath
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from kg.storage.base import StorageAdapter
 from kg.viz.api import (
@@ -103,7 +103,7 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(status, json_bytes(payload), extra=extra)
 
     def _asset(self, path: str):
-        raw = urlsplit(path).path
+        raw = unquote(urlsplit(path).path)
         rel = raw.lstrip("/") or "index.html"
         p = PurePosixPath(rel)
         if p.is_absolute() or ".." in p.parts:
@@ -217,7 +217,7 @@ class _Handler(BaseHTTPRequestHandler):
                                     "error": {"code": -32601, "message": "method not found"}})
         params = body["params"]
         tool = params.get("name")
-        if tool not in {"list_projects", "get_graph_schema"}:
+        if not isinstance(tool, str) or tool not in {"list_projects", "get_graph_schema"}:
             return self._json(200, {"jsonrpc": "2.0", "id": body.get("id"), "error": {"code": -32601, "message": "tool not found"}})
         adapter = self._adapter()
         try:

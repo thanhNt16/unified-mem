@@ -11,6 +11,8 @@ def test_rejects_missing_or_relative_project_path(tmp_path) -> None:
         manager.start("relative/path", "demo")
     with pytest.raises(InvalidProjectPath):
         manager.start(str(tmp_path / "missing"), "demo")
+    with pytest.raises(InvalidProjectPath):
+        manager.start(str(tmp_path) + "\x00bad", "demo")
 
 
 def test_allows_only_one_index_job(tmp_path) -> None:

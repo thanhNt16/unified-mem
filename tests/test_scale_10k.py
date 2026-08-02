@@ -139,23 +139,18 @@ def test_scale_10k_louvain(tmp_path):
         adapter.conn.close()
 
 
-def test_scale_10k_cluster_payload(tmp_path):
-    """Viz Stage-1 coarse cluster view works at 10k nodes."""
+def test_scale_10k_layout_payload(tmp_path):
+    """The CBM layout payload remains bounded at 10k nodes."""
     adapter, emb, cfg, paths = _build_scale_graph(tmp_path)
     try:
-        from kg.viz.server import _cluster_payload, _graph_payload, _MAX_NODES
+        from kg.viz.api import build_layout_payload
         t0 = time.perf_counter()
-        coarse = _cluster_payload(adapter)
-        t_coarse = time.perf_counter() - t0
-        print(f"\n[10k scale] /clusters.json: {t_coarse*1000:.1f}ms, clusters={coarse['total_clusters']}")
-
-        t0 = time.perf_counter()
-        detail = _graph_payload(adapter)
+        detail = build_layout_payload(adapter)
         t_detail = time.perf_counter() - t0
-        print(f"[10k scale] /graph.json: {t_detail*1000:.1f}ms, nodes={len(detail['nodes'])} (cap {_MAX_NODES}), truncated={detail['truncated_nodes']}")
+        print(f"\n[10k scale] /api/layout: {t_detail*1000:.1f}ms, nodes={len(detail['nodes'])} (cap 2000), truncated={detail['truncated_nodes']}")
 
-        assert coarse["total_nodes"] == 10_000
-        assert len(detail["nodes"]) <= _MAX_NODES, "detail must respect hard cap"
+        assert detail["total_nodes"] == 10_000
+        assert len(detail["nodes"]) <= 2_000, "layout must respect hard cap"
         assert detail["truncated_nodes"] is True, "10k graph must trigger truncation warning"
         assert t_detail < 5.0, f"detail payload too slow: {t_detail:.2f}s"
     finally:
