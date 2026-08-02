@@ -1,4 +1,4 @@
-"""Export real kg graph to docs/demo/graph.json for the live demo."""
+"""Export real kg graph to ui/graph-ui/snapshots/demo-source.json for the static snapshot."""
 from __future__ import annotations
 import json
 from pathlib import Path

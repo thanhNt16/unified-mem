@@ -1,6 +1,7 @@
 """Generate a deterministic synthetic 10k-node dense graph for stress-testing
 the 3D demo. The real repo index has ~1.7k nodes; this proves the renderer
-holds at 10k nodes with dense edges. Output matches docs/demo/graph.json schema.
+holds at 10k nodes with dense edges. Output matches
+ui/graph-ui/snapshots/demo-source.json schema.
 """
 from __future__ import annotations
 import json, random

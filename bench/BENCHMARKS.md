@@ -34,8 +34,8 @@ CI runs the scale-10 suite on every push to `main` and weekly (`.github/workflow
 | `bench/reporter.py` | JSON + markdown report rendering |
 | `bench/scale_100k.py` | 100k-node/150k-edge stress profile |
 | `bench/evaluate_cbm.py` | Comparative evaluation against codebase-memory-mcp patterns |
-| `bench/export_demo_graph.py` | Exports real repo graph to `docs/demo/graph.json` |
-| `bench/gen_stress_graph.py` | Generates deterministic 10k stress dataset to `docs/demo/graph-stress.json` |
+| `bench/export_demo_graph.py` | Exports real repo graph to `ui/graph-ui/snapshots/demo-source.json` |
+| `bench/gen_stress_graph.py` | Generates deterministic 10k stress dataset to `ui/graph-ui/snapshots/stress-source.json` |
 
 ## Dimensions
 
