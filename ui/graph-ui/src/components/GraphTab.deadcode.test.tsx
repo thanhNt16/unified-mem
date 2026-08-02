@@ -4,7 +4,20 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GraphTab } from "./GraphTab";
 import type { GraphData } from "../lib/types";
-import type { RuntimeConfig } from "../lib/kgAdapter";
+import { DEFAULT_CAPABILITIES, type RuntimeConfig } from "../lib/kgAdapter";
+
+const testRuntime: RuntimeConfig = {
+  mode: "live",
+  capabilities: {
+    ...DEFAULT_CAPABILITIES,
+    projects: true,
+    index: true,
+    code_view: true,
+    adr: true,
+    dead_code: true,
+    missed_graph: true,
+  },
+};
 
 /* GraphScene renders a WebGL <Canvas> which jsdom can't run — stub it out. */
 vi.mock("./GraphScene", () => ({
@@ -49,7 +62,7 @@ describe("GraphTab dead-code filters", () => {
 
   it("shows the dead count and filters to only dead code on toggle", async () => {
     mockLayoutFetch(SAMPLE);
-    render(<GraphTab project="demo" />);
+    render(<GraphTab project="demo" runtime={testRuntime} />);
 
     /* Panel loaded; the dead-code section reports one dead node. */
     expect(await screen.findByText("Filters")).toBeInTheDocument();

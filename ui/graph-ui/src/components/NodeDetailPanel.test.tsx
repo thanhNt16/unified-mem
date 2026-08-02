@@ -6,6 +6,17 @@ import { NodeDetailPanel } from "./NodeDetailPanel";
 import type { GraphNode, RepoInfo } from "../lib/types";
 import type { CapabilitySet } from "../lib/kgAdapter";
 
+const allCapabilities: CapabilitySet = {
+  graph: true,
+  projects: true,
+  control: true,
+  index: true,
+  code_view: true,
+  adr: true,
+  dead_code: true,
+  missed_graph: true,
+};
+
 /* Mock the RPC layer so "Show code" resolves without a backend. */
 const callToolMock = vi.fn();
 vi.mock("../api/rpc", () => ({
@@ -86,6 +97,7 @@ describe("NodeDetailPanel code preview + deep-link", () => {
         repoInfo={REPO}
         onClose={() => {}}
         onNavigate={() => {}}
+        capabilities={allCapabilities}
       />,
     );
 
@@ -112,6 +124,7 @@ describe("NodeDetailPanel code preview + deep-link", () => {
         repoInfo={REPO}
         onClose={() => {}}
         onNavigate={() => {}}
+        capabilities={allCapabilities}
       />,
     );
 

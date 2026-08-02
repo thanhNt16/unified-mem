@@ -3,7 +3,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useProjects } from "../hooks/useProjects";
 import { colorForLabel } from "../lib/colors";
 import { useUiMessages } from "../lib/i18n";
-import { ALL_CAPABILITIES, type CapabilitySet } from "../lib/kgAdapter";
+import { DEFAULT_CAPABILITIES, type CapabilitySet } from "../lib/kgAdapter";
 
 interface StatsTabProps {
   onSelectProject: (project: string) => void;
@@ -12,7 +12,7 @@ interface StatsTabProps {
   capabilities?: CapabilitySet;
 }
 
-const ALL_GATES: CapabilitySet = { ...ALL_CAPABILITIES };
+const DEFAULT_GATES: CapabilitySet = { ...DEFAULT_CAPABILITIES };
 
 /* Unsupported health/ADR/browse routes intentionally have no UI. */
 
@@ -25,13 +25,22 @@ function CreateIndexModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [projectName, setProjectName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /* Mirrors the backend project-name rule [A-Za-z0-9._-]{1,128}
+   * (kg.viz.indexing._PROJECT_NAME_RE). Invalid chars are coerced to "-";
+   * an all-invalid or empty name falls back to the path-derived default. */
+  const sanitizeName = (raw: string): string =>
+    raw.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 128);
+
   const submit = async () => {
     if (!path) return;
     setSubmitting(true); setError(null);
     const fallback = path.split(/[\\/]+/).filter(Boolean).pop() ?? "project";
     const derived = fallback.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 128) || "project";
+    const custom = projectName.trim();
+    const project_name = custom ? sanitizeName(custom) || derived : derived;
     try {
-      const res = await fetch("/api/index", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ root_path: path, project_name: projectName.trim() || derived }) });
+      const res = await fetch("/api/index", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ root_path: path, project_name }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed");
       onCreated(); onClose();
@@ -123,7 +132,7 @@ export function IndexProgress({ onDone }: { onDone: () => void }) {
 
 /* ── Main Stats Tab ─────────────────────────────────────── */
 
-export function StatsTab({ onSelectProject, capabilities = ALL_GATES }: StatsTabProps) {
+export function StatsTab({ onSelectProject, capabilities = DEFAULT_GATES }: StatsTabProps) {
   const t = useUiMessages();
   const { projects, loading, error, refresh } = useProjects();
   const [showModal, setShowModal] = useState(false);

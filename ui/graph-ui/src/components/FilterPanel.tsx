@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { colorForLabel, STATUS_LEGEND } from "../lib/colors";
 import type { GraphData } from "../lib/types";
-import { ALL_CAPABILITIES, type CapabilitySet } from "../lib/kgAdapter";
+import { DEFAULT_CAPABILITIES, type CapabilitySet } from "../lib/kgAdapter";
 
 interface FilterPanelProps {
   data: GraphData;
@@ -32,7 +32,7 @@ interface FilterPanelProps {
   capabilities?: CapabilitySet;
 }
 
-const ALL_GATES: CapabilitySet = { ...ALL_CAPABILITIES };
+const DEFAULT_GATES: CapabilitySet = { ...DEFAULT_CAPABILITIES };
 
 /* Checkbox row matching the existing "Show labels" toggle style */
 function CheckRow({
@@ -89,7 +89,7 @@ export function FilterPanel({
   missedView,
   missedCount,
   onToggleMissedView,
-  capabilities = ALL_GATES,
+  capabilities = DEFAULT_GATES,
 }: FilterPanelProps) {
   const { labelCounts, edgeTypeCounts, statusCounts } = useMemo(() => {
     const lc = new Map<string, number>();

@@ -25,19 +25,6 @@ export const DEFAULT_CAPABILITIES: CapabilitySet = {
   missed_graph: false,
 };
 
-/* Default gate set for components rendered without an explicit runtime
- * (upstream tests and callers that predate the capability adapter). */
-export const ALL_CAPABILITIES: CapabilitySet = {
-  graph: true,
-  projects: true,
-  control: true,
-  index: true,
-  code_view: true,
-  adr: true,
-  dead_code: true,
-  missed_graph: true,
-};
-
 const MAX_NODES = 2000;
 
 /* Capability keys accepted from any transport. Unknown keys fail closed. */

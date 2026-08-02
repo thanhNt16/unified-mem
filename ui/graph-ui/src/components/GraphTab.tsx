@@ -27,14 +27,7 @@ import { ResizeHandle } from "./ResizeHandle";
 import { ErrorBoundary } from "./ErrorBoundary";
 import type { GraphNode, GraphData, RepoInfo } from "../lib/types";
 import { colorForStatus } from "../lib/colors";
-import { ALL_CAPABILITIES, type RuntimeConfig } from "../lib/kgAdapter";
-
-/* Default transport for callers without an explicit runtime (upstream tests):
- * live endpoint, all capabilities enabled. */
-const LIVE_RUNTIME: RuntimeConfig = {
-  mode: "live",
-  capabilities: { ...ALL_CAPABILITIES },
-};
+import type { RuntimeConfig } from "../lib/kgAdapter";
 
 /* Persist panel widths */
 function loadWidth(key: string, fallback: number): number {
@@ -65,7 +58,7 @@ function saveNodeBudget(project: string, value: number) {
 
 interface GraphTabProps {
   project: string | null;
-  runtime?: RuntimeConfig;
+  runtime: RuntimeConfig;
 }
 
 export function formatGraphLimitNotice(data: GraphData | null): string | null {
@@ -73,7 +66,7 @@ export function formatGraphLimitNotice(data: GraphData | null): string | null {
   return `Showing ${data.nodes.length.toLocaleString("en-US")} of ${data.total_nodes.toLocaleString("en-US")} nodes (${data.edges.length.toLocaleString("en-US")} edges). Raise the node budget or use filters.`;
 }
 
-export function GraphTab({ project, runtime = LIVE_RUNTIME }: GraphTabProps) {
+export function GraphTab({ project, runtime }: GraphTabProps) {
   const caps = runtime.capabilities;
   const { data, loading, error, progress, fetchOverview } = useGraphData(runtime);
 

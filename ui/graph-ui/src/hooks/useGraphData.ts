@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import type { GraphData } from "../lib/types";
-import { ALL_CAPABILITIES, graphUrl, type RuntimeConfig } from "../lib/kgAdapter";
+import { DEFAULT_CAPABILITIES, graphUrl, type RuntimeConfig } from "../lib/kgAdapter";
 
 export interface LoadProgress {
   receivedBytes: number;
@@ -20,11 +20,10 @@ interface UseGraphDataResult {
   fetchDetail: (project: string, centerNode: string) => void;
 }
 
-/* Default transport for callers without an explicit runtime (upstream tests):
- * live endpoint, all capabilities enabled. */
+/* Fail-closed transport for callers without an explicit runtime. */
 const LIVE_RUNTIME: RuntimeConfig = {
   mode: "live",
-  capabilities: { ...ALL_CAPABILITIES },
+  capabilities: { ...DEFAULT_CAPABILITIES },
 };
 
 /* Node budget: how many nodes the layout endpoint is asked for. The default

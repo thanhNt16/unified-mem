@@ -6,6 +6,17 @@ import { StatsTab, IndexProgress } from "./StatsTab";
 import { messages } from "../lib/i18n";
 import type { CapabilitySet } from "../lib/kgAdapter";
 
+const allCapabilities: CapabilitySet = {
+  graph: true,
+  projects: true,
+  control: true,
+  index: true,
+  code_view: true,
+  adr: true,
+  dead_code: true,
+  missed_graph: true,
+};
+
 function mockProjectsFetch(extra?: (url: string, init?: RequestInit) => Response | undefined) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -48,7 +59,7 @@ describe("StatsTab index modal", () => {
     vi.unstubAllGlobals();
   });
 
-  it("submits a custom path and project name", async () => {
+  it("submits a custom path and sanitized ASCII project name", async () => {
     let submitted: unknown = null;
     mockProjectsFetch((url, init) => {
       if (url === "/api/index") {
@@ -61,22 +72,82 @@ describe("StatsTab index modal", () => {
       return undefined;
     });
 
-    render(<StatsTab onSelectProject={() => {}} />);
+    render(<StatsTab onSelectProject={() => {}} capabilities={allCapabilities} />);
     fireEvent.click(await screen.findByRole("button", { name: "Index your first repository" }));
 
     fireEvent.change(await screen.findByLabelText("Repository path"), {
-      target: { value: "D:\\work\\信租风控通后端" },
+      target: { value: "D:\\work\\rental-backend" },
     });
     fireEvent.change(screen.getByLabelText("Project ID (optional — permanent, cannot be renamed)"), {
-      target: { value: "信租风控通后端" },
+      target: { value: "rental-backend" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Index This Folder" }));
 
     await waitFor(() => {
       expect(submitted).toEqual({
-        root_path: "D:\\work\\信租风控通后端",
-        project_name: "信租风控通后端",
+        root_path: "D:\\work\\rental-backend",
+        project_name: "rental-backend",
       });
+    });
+  });
+
+  it("derives a valid project name from the path when the name is blank", async () => {
+    let submitted: unknown = null;
+    mockProjectsFetch((url, init) => {
+      if (url === "/api/index") {
+        submitted = JSON.parse(String(init?.body));
+        return new Response(JSON.stringify({ status: "indexing", slot: 0 }), {
+          status: 202,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return undefined;
+    });
+
+    render(<StatsTab onSelectProject={() => {}} capabilities={allCapabilities} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Index your first repository" }));
+
+    fireEvent.change(await screen.findByLabelText("Repository path"), {
+      target: { value: "D:\\work\\my-project" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Index This Folder" }));
+
+    await waitFor(() => {
+      expect(submitted).toEqual({
+        root_path: "D:\\work\\my-project",
+        project_name: "my-project",
+      });
+    });
+  });
+
+  it("coerces an invalid custom name to backend-safe ASCII and never POSTs the raw value", async () => {
+    let submitted: unknown = null;
+    mockProjectsFetch((url, init) => {
+      if (url === "/api/index") {
+        submitted = JSON.parse(String(init?.body));
+        return new Response(JSON.stringify({ status: "indexing", slot: 0 }), {
+          status: 202,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return undefined;
+    });
+
+    render(<StatsTab onSelectProject={() => {}} capabilities={allCapabilities} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Index your first repository" }));
+
+    fireEvent.change(await screen.findByLabelText("Repository path"), {
+      target: { value: "D:\\work\\rental-backend" },
+    });
+    fireEvent.change(screen.getByLabelText("Project ID (optional — permanent, cannot be renamed)"), {
+      target: { value: "信租 风控!!" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Index This Folder" }));
+
+    await waitFor(() => {
+      expect(submitted).toMatchObject({ root_path: "D:\\work\\rental-backend" });
+      expect((submitted as { project_name: string }).project_name).toMatch(/^[A-Za-z0-9._-]{1,128}$/);
+      expect((submitted as { project_name: string }).project_name).not.toBe("信租 风控!!");
     });
   });
 });

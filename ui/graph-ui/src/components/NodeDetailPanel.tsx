@@ -3,7 +3,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { colorForLabel } from "../lib/colors";
 import { callTool } from "../api/rpc";
 import type { GraphNode, GraphEdge, RepoInfo } from "../lib/types";
-import { ALL_CAPABILITIES, type CapabilitySet } from "../lib/kgAdapter";
+import { DEFAULT_CAPABILITIES, type CapabilitySet } from "../lib/kgAdapter";
 
 interface Connection {
   node: GraphNode;
@@ -19,12 +19,10 @@ interface NodeDetailPanelProps {
   repoInfo: RepoInfo | null;
   onClose: () => void;
   onNavigate: (node: GraphNode) => void;
-  /* Capability gates — default to all enabled so existing callers keep the
-   * full upstream panel. */
   capabilities?: CapabilitySet;
 }
 
-const ALL_GATES: CapabilitySet = { ...ALL_CAPABILITIES };
+const DEFAULT_GATES: CapabilitySet = { ...DEFAULT_CAPABILITIES };
 
 interface SnippetResult {
   source?: string;
@@ -59,7 +57,7 @@ export function NodeDetailPanel({
   repoInfo,
   onClose,
   onNavigate,
-  capabilities = ALL_GATES,
+  capabilities = DEFAULT_GATES,
 }: NodeDetailPanelProps) {
   const [code, setCode] = useState<string | null>(null);
   const [codeLoading, setCodeLoading] = useState(false);

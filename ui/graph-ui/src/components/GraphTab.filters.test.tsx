@@ -3,6 +3,9 @@ import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GraphTab } from "./GraphTab";
+import { DEFAULT_CAPABILITIES, type RuntimeConfig } from "../lib/kgAdapter";
+
+const testRuntime: RuntimeConfig = { mode: "live", capabilities: { ...DEFAULT_CAPABILITIES } };
 import type { GraphData } from "../lib/types";
 
 /* GraphScene renders a WebGL <Canvas> which jsdom can't run — stub it out. */
@@ -43,7 +46,7 @@ describe("GraphTab filters", () => {
   it("keeps the filter sidebar visible when all nodes are filtered out", async () => {
     mockLayoutFetch(SAMPLE);
 
-    render(<GraphTab project="demo" />);
+    render(<GraphTab project="demo" runtime={testRuntime} />);
 
     /* Wait for the layout to load — the filter panel header appears. */
     expect(await screen.findByText("Filters")).toBeInTheDocument();
